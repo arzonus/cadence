@@ -158,6 +158,8 @@ func TestNewConfig(t *testing.T) {
 		"ReplicatorTaskDeleteBatchSize":                        {dynamicconfig.ReplicatorTaskDeleteBatchSize, 53},
 		"ReplicatorReadTaskMaxRetryCount":                      {dynamicconfig.ReplicatorReadTaskMaxRetryCount, 54},
 		"ReplicatorProcessorFetchTasksBatchSize":               {dynamicconfig.ReplicatorTaskBatchSize, 55},
+		"ReplicatorProcessorMaxTaskBatchSize":                  {dynamicconfig.ReplicatorMinTaskBatchSize, 1},
+		"ReplicatorProcessorMinTaskBatchSize":                  {dynamicconfig.ReplicatorMaxTaskBatchSize, 1000},
 		"ReplicatorUpperLatency":                               {dynamicconfig.ReplicatorUpperLatency, time.Second},
 		"ReplicatorCacheCapacity":                              {dynamicconfig.ReplicatorCacheCapacity, 56},
 		"ExecutionMgrNumConns":                                 {dynamicconfig.ExecutionMgrNumConns, 57},
