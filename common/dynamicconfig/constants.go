@@ -3510,13 +3510,13 @@ var IntKeys = map[IntKey]DynamicInt{
 		DefaultValue: 25,
 	},
 	ReplicatorMinTaskBatchSize: {
-		KeyName:      "history.replicatorTaskBatchSize",
+		KeyName:      "history.replicatorMinTaskBatchSize",
 		Description:  "ReplicatorMinTaskBatchSize is minimum batch size for ReplicatorProcessor",
 		Filters:      []Filter{ShardID, ClusterName},
 		DefaultValue: 1,
 	},
 	ReplicatorMaxTaskBatchSize: {
-		KeyName:      "history.replicatorTaskBatchSize",
+		KeyName:      "history.replicatorMaxTaskBatchSize",
 		Description:  "ReplicatorMaxTaskBatchSize is maximum size for ReplicatorProcessor",
 		Filters:      []Filter{ShardID, ClusterName},
 		DefaultValue: 1000,
