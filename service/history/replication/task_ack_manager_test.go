@@ -351,7 +351,7 @@ func (s *fakeAckLevelStore) UpdateClusterReplicationLevel(cluster string, lastTa
 
 type fakeTaskReader []*persistence.ReplicationTaskInfo
 
-func (r fakeTaskReader) Read(ctx context.Context, readLevel int64, maxReadLevel int64) ([]*persistence.ReplicationTaskInfo, bool, error) {
+func (r fakeTaskReader) Read(ctx context.Context, readLevel int64, maxReadLevel int64, batchSize int) ([]*persistence.ReplicationTaskInfo, bool, error) {
 	if r == nil {
 		return nil, false, errors.New("error reading replication tasks")
 	}
@@ -368,6 +368,11 @@ func (r fakeTaskReader) Read(ctx context.Context, readLevel int64, maxReadLevel 
 		}
 		result = append(result, task)
 	}
+
+	if len(result) > batchSize {
+		return result[:batchSize+1], true, nil
+	}
+
 	return result, hasMore, nil
 }
 

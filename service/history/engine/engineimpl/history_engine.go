@@ -163,7 +163,7 @@ func NewEngineWithShardContext(
 		shard.GetLogger(),
 		replicationHydrator,
 	)
-	replicationReader := replication.NewDynamicTaskReader(shard.GetShardID(), executionManager, shard.GetTimeSource(), config)
+	replicationReader := replication.NewTaskReader(shard.GetShardID(), executionManager)
 
 	historyEngImpl := &historyEngineImpl{
 		currentClusterName:   currentClusterName,

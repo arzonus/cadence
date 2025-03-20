@@ -67,7 +67,7 @@ type (
 		UpdateClusterReplicationLevel(cluster string, lastTaskID int64) error
 	}
 	taskReader interface {
-		Read(ctx context.Context, readLevel int64, maxReadLevel int64) ([]*persistence.ReplicationTaskInfo, bool, error)
+		Read(ctx context.Context, readLevel int64, maxReadLevel int64, batchSize int) ([]*persistence.ReplicationTaskInfo, bool, error)
 	}
 )
 
@@ -107,7 +107,7 @@ func (t *TaskAckManager) GetTasks(ctx context.Context, pollingCluster string, la
 
 	taskGeneratedTimer := t.scope.StartTimer(metrics.TaskLatency)
 
-	tasks, hasMore, err := t.reader.Read(ctx, lastReadTaskID, t.ackLevels.GetTransferMaxReadLevel())
+	tasks, hasMore, err := t.reader.Read(ctx, lastReadTaskID, t.ackLevels.GetTransferMaxReadLevel(), 0)
 	if err != nil {
 		return nil, err
 	}
