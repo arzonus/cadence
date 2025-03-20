@@ -1042,6 +1042,18 @@ const (
 	// Default value: 25
 	// Allowed filters: N/A
 	ReplicatorTaskBatchSize
+	// ReplicatorMaxTaskBatchSize is the maximum batch size for ReplicatorProcessor
+	// KeyName: history.replicatorMaxTaskBatchSize
+	// Value type: Int
+	// Default value: 1000
+	// Allowed filters: ShardID, ClusterName
+	ReplicatorMaxTaskBatchSize
+	// ReplicatorMinTaskBatchSize is the minimum batch size for ReplicatorProcessor
+	// KeyName: history.replicatorMinTaskBatchSize
+	// Value type: Int
+	// Default value: 1
+	// Allowed filters: ShardID, ClusterName
+	ReplicatorMinTaskBatchSize
 	// ReplicatorTaskDeleteBatchSize is batch size for ReplicatorProcessor to delete replication tasks
 	// KeyName: history.replicatorTaskDeleteBatchSize
 	// Value type: Int
@@ -3496,6 +3508,18 @@ var IntKeys = map[IntKey]DynamicInt{
 		KeyName:      "history.replicatorTaskBatchSize",
 		Description:  "ReplicatorTaskBatchSize is batch size for ReplicatorProcessor",
 		DefaultValue: 25,
+	},
+	ReplicatorMinTaskBatchSize: {
+		KeyName:      "history.replicatorTaskBatchSize",
+		Description:  "ReplicatorMinTaskBatchSize is minimum batch size for ReplicatorProcessor",
+		Filters:      []Filter{ShardID, ClusterName},
+		DefaultValue: 1,
+	},
+	ReplicatorMaxTaskBatchSize: {
+		KeyName:      "history.replicatorTaskBatchSize",
+		Description:  "ReplicatorMaxTaskBatchSize is maximum size for ReplicatorProcessor",
+		Filters:      []Filter{ShardID, ClusterName},
+		DefaultValue: 1000,
 	},
 	ReplicatorTaskDeleteBatchSize: {
 		KeyName:      "history.replicatorTaskDeleteBatchSize",
