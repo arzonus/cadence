@@ -166,6 +166,8 @@ type Config struct {
 	ReplicatorTaskDeleteBatchSize          dynamicconfig.IntPropertyFn
 	ReplicatorReadTaskMaxRetryCount        dynamicconfig.IntPropertyFn
 	ReplicatorProcessorFetchTasksBatchSize dynamicconfig.IntPropertyFnWithShardIDFilter
+	ReplicatorProcessorMaxTaskBatchSize    dynamicconfig.IntPropertyFnWithShardIDFilter
+	ReplicatorProcessorMinTaskBatchSize    dynamicconfig.IntPropertyFnWithShardIDFilter
 	ReplicatorUpperLatency                 dynamicconfig.DurationPropertyFn
 	ReplicatorCacheCapacity                dynamicconfig.IntPropertyFn
 
