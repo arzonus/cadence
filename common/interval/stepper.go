@@ -12,6 +12,6 @@ type Stepper interface {
 	// Value returns the current value in the interval
 	Value() int
 
-	// Reset resets the interval to its initial state
+	// Reset resets the stepper to its initial state
 	Reset()
 }
