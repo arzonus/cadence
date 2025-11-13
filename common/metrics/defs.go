@@ -2962,6 +2962,13 @@ const (
 	ShardDistributorStoreRequestsPerNamespace
 	ShardDistributorStoreLatencyHistogramPerNamespace
 
+	// ShardDistributorShardAssignmentDistributionLatency measures the time taken between assignment of a shard
+	// and the time it is fully distributed to executors
+	ShardDistributorShardAssignmentDistributionLatency
+
+	// ShardDistributorShardHandoverLatency measures the time taken to hand over a shard from one executor to another
+	ShardDistributorShardHandoverLatency
+
 	NumShardDistributorMetrics
 )
 

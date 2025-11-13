@@ -26,7 +26,7 @@ import (
 	"fmt"
 )
 
-//go:generate enumer -type=ExecutorStatus,ShardStatus,AssignmentStatus,MigrationMode -json -output sharddistributor_statuses_enumer_generated.go
+//go:generate enumer -type=ExecutorStatus,ShardStatus,AssignmentStatus,MigrationMode,HandoverType -json -output sharddistributor_statuses_enumer_generated.go
 
 type GetShardOwnerRequest struct {
 	ShardKey  string
@@ -223,6 +223,9 @@ const (
 	AssignmentStatusREADY   AssignmentStatus = 1
 )
 
+// HandoverType is used to indicate the type of handover that occurred during shard reassignment.
+// Type is persisted to the DB with a string value mapping.
+// Beware - if we want to change the name - it should be backward compatible and should be done in two steps.
 type HandoverType int32
 
 const (

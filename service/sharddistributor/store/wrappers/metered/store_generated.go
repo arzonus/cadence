@@ -99,6 +99,16 @@ func (c *meteredStore) GetShardOwner(ctx context.Context, namespace string, shar
 	return
 }
 
+func (c *meteredStore) GetShardStats(ctx context.Context, namespace string, shardIDs []string) (m1 map[string]store.ShardStatistics, err error) {
+	op := func() error {
+		m1, err = c.wrapped.GetShardStats(ctx, namespace, shardIDs)
+		return err
+	}
+
+	err = c.call(metrics.ShardDistributorStoreGetShardStatsScope, op, metrics.NamespaceTag(namespace))
+	return
+}
+
 func (c *meteredStore) GetState(ctx context.Context, namespace string) (np1 *store.NamespaceState, err error) {
 	op := func() error {
 		np1, err = c.wrapped.GetState(ctx, namespace)

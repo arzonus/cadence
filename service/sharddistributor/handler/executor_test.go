@@ -13,6 +13,7 @@ import (
 	"github.com/uber/cadence/common/dynamicconfig"
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log/testlogger"
+	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/sharddistributor/config"
 	"github.com/uber/cadence/service/sharddistributor/store"
@@ -31,7 +32,7 @@ func TestHeartbeat(t *testing.T) {
 		mockTimeSource := clock.NewMockedTimeSourceAt(now)
 		shardDistributionCfg := config.ShardDistribution{}
 		migrationConfig := newMigrationConfig(t, []configEntry{})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -56,7 +57,7 @@ func TestHeartbeat(t *testing.T) {
 		mockTimeSource := clock.NewMockedTimeSourceAt(now)
 		shardDistributionCfg := config.ShardDistribution{}
 		migrationConfig := newMigrationConfig(t, []configEntry{})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -82,7 +83,7 @@ func TestHeartbeat(t *testing.T) {
 		mockTimeSource := clock.NewMockedTimeSourceAt(now)
 		shardDistributionCfg := config.ShardDistribution{}
 		migrationConfig := newMigrationConfig(t, []configEntry{})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -115,7 +116,7 @@ func TestHeartbeat(t *testing.T) {
 		mockTimeSource := clock.NewMockedTimeSourceAt(now)
 		shardDistributionCfg := config.ShardDistribution{}
 		migrationConfig := newMigrationConfig(t, []configEntry{})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -145,7 +146,7 @@ func TestHeartbeat(t *testing.T) {
 		mockTimeSource := clock.NewMockedTimeSource()
 		shardDistributionCfg := config.ShardDistribution{}
 		migrationConfig := newMigrationConfig(t, []configEntry{})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -170,7 +171,7 @@ func TestHeartbeat(t *testing.T) {
 			Namespaces: []config.Namespace{{Name: namespace, Mode: config.MigrationModeINVALID}},
 		}
 		migrationConfig := newMigrationConfig(t, []configEntry{{dynamicproperties.MigrationMode, config.MigrationModeINVALID}})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -199,7 +200,7 @@ func TestHeartbeat(t *testing.T) {
 			Namespaces: []config.Namespace{{Name: namespace, Mode: config.MigrationModeLOCALPASSTHROUGH}},
 		}
 		migrationConfig := newMigrationConfig(t, []configEntry{{dynamicproperties.MigrationMode, config.MigrationModeLOCALPASSTHROUGH}})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -228,7 +229,7 @@ func TestHeartbeat(t *testing.T) {
 			Namespaces: []config.Namespace{{Name: namespace, Mode: config.MigrationModeLOCALPASSTHROUGHSHADOW}},
 		}
 		migrationConfig := newMigrationConfig(t, []configEntry{{dynamicproperties.MigrationMode, config.MigrationModeLOCALPASSTHROUGHSHADOW}})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -291,7 +292,7 @@ func TestHeartbeat(t *testing.T) {
 			Namespaces: []config.Namespace{{Name: namespace, Mode: config.MigrationModeLOCALPASSTHROUGHSHADOW}},
 		}
 		migrationConfig := newMigrationConfig(t, []configEntry{{dynamicproperties.MigrationMode, config.MigrationModeLOCALPASSTHROUGHSHADOW}})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -334,7 +335,7 @@ func TestHeartbeat(t *testing.T) {
 			Namespaces: []config.Namespace{{Name: namespace, Mode: config.MigrationModeLOCALPASSTHROUGHSHADOW}},
 		}
 		migrationConfig := newMigrationConfig(t, []configEntry{{dynamicproperties.MigrationMode, config.MigrationModeLOCALPASSTHROUGHSHADOW}})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		req := &types.ExecutorHeartbeatRequest{
 			Namespace:  namespace,
@@ -376,7 +377,7 @@ func TestHeartbeat(t *testing.T) {
 		mockTimeSource := clock.NewMockedTimeSourceAt(now)
 		shardDistributionCfg := config.ShardDistribution{}
 		migrationConfig := newMigrationConfig(t, []configEntry{})
-		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig)
+		handler := NewExecutorHandler(testlogger.New(t), mockStore, mockTimeSource, shardDistributionCfg, migrationConfig, metrics.NoopClient)
 
 		// Create metadata with more than max allowed keys
 		metadata := make(map[string]string)

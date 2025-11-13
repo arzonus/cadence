@@ -1169,6 +1169,10 @@ func ActivityTaskState(state int32) Tag {
 	return newInt32("activity-task-state", state)
 }
 
+func ShardIDs(shardIDs []string) Tag {
+	return newStringsTag("shard-ids", shardIDs)
+}
+
 func ShardNamespace(name string) Tag {
 	return newStringTag("shard-namespace", name)
 }

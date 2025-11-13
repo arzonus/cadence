@@ -151,6 +151,21 @@ func (mr *MockStoreMockRecorder) GetShardOwner(ctx, namespace, shardID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardOwner", reflect.TypeOf((*MockStore)(nil).GetShardOwner), ctx, namespace, shardID)
 }
 
+// GetShardStats mocks base method.
+func (m *MockStore) GetShardStats(ctx context.Context, namespace string, shardIDs []string) (map[string]ShardStatistics, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardStats", ctx, namespace, shardIDs)
+	ret0, _ := ret[0].(map[string]ShardStatistics)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardStats indicates an expected call of GetShardStats.
+func (mr *MockStoreMockRecorder) GetShardStats(ctx, namespace, shardIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardStats", reflect.TypeOf((*MockStore)(nil).GetShardStats), ctx, namespace, shardIDs)
+}
+
 // GetState mocks base method.
 func (m *MockStore) GetState(ctx context.Context, namespace string) (*NamespaceState, error) {
 	m.ctrl.T.Helper()

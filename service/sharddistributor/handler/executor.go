@@ -9,6 +9,7 @@ import (
 	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/log/tag"
+	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/sharddistributor/config"
 	"github.com/uber/cadence/service/sharddistributor/store"
@@ -28,6 +29,7 @@ type executor struct {
 	storage                store.Store
 	shardDistributionCfg   config.ShardDistribution
 	migrationConfiguration *config.MigrationConfig
+	metricsClient          metrics.Client
 }
 
 func NewExecutorHandler(
@@ -36,6 +38,7 @@ func NewExecutorHandler(
 	timeSource clock.TimeSource,
 	shardDistributionCfg config.ShardDistribution,
 	migrationConfig *config.MigrationConfig,
+	metricsClient metrics.Client,
 ) Executor {
 	return &executor{
 		logger:                 logger,
@@ -43,6 +46,7 @@ func NewExecutorHandler(
 		storage:                storage,
 		shardDistributionCfg:   shardDistributionCfg,
 		migrationConfiguration: migrationConfig,
+		metricsClient:          metricsClient,
 	}
 }
 
@@ -96,7 +100,44 @@ func (h *executor) Heartbeat(ctx context.Context, request *types.ExecutorHeartbe
 		return nil, fmt.Errorf("record heartbeat: %w", err)
 	}
 
+	go h.emitShardAssignmentMetrics(request.Namespace, now, previousHeartbeat, assignedShards)
+
 	return _convertResponse(assignedShards, mode), nil
+}
+
+// emitShardHandoverLatencyMetric emits the following metrics for newly assigned shards:
+// - ShardAssignmentDistributionLatency: time taken since the shard was assigned to now
+// - ShardHandoverLatency: time taken since the previous executor's last heartbeat to now
+func (h *executor) emitShardAssignmentMetrics(namespace string, now time.Time, previousHeartbeat *store.HeartbeatState, assignedState *store.AssignedState) {
+
+	// find newly assigned shards, if there are none, no handovers happened
+	newAssignedShardIDs := filterNewlyAssignedShardIDs(previousHeartbeat, assignedState)
+	if len(newAssignedShardIDs) == 0 {
+		// no handovers happened, nothing to do
+		return
+	}
+
+	shardStats, err := h.storage.GetShardStats(context.Background(), namespace, newAssignedShardIDs)
+	if err != nil {
+		h.logger.Warn("Failed to get shard stats for handover latency metric", tag.ShardNamespace(namespace), tag.Error(err), tag.ShardIDs(newAssignedShardIDs))
+		return
+	}
+
+	metricsScope := h.metricsClient.
+		Scope(metrics.ShardDistributorHeartbeatScope).
+		Tagged(metrics.NamespaceTag(namespace))
+
+	for _, stat := range shardStats {
+		metricsScope.RecordHistogramDuration(metrics.ShardDistributorShardAssignmentDistributionLatency, now.Sub(time.Unix(stat.LastAssignmentTime, 0)))
+
+		if stat.PreviousExecutorLastHeartbeatTime == nil || stat.LastHandoverType == nil {
+			// this means that the shard was never assigned before, so no handover happened
+			continue
+		}
+
+		metricsScope.Tagged(metrics.HandoverTypeTag(stat.LastHandoverType.String())).
+			RecordHistogramDuration(metrics.ShardDistributorShardHandoverLatency, now.Sub(time.Unix(*stat.PreviousExecutorLastHeartbeatTime, 0)))
+	}
 }
 
 // assignShardsInCurrentHeartbeat is used during the migration phase to assign the shards to the executors according to what is reported during the heartbeat
@@ -155,4 +196,29 @@ func validateMetadata(metadata map[string]string) error {
 	}
 
 	return nil
+}
+
+func filterNewlyAssignedShardIDs(previousHeartbeat *store.HeartbeatState, assignedState *store.AssignedState) []string {
+	// if previousHeartbeat is nil, all assigned shards are new
+	if previousHeartbeat == nil {
+		var newAssignedShardIDs = make([]string, len(assignedState.AssignedShards))
+
+		var i int
+		for assignedShardID := range assignedState.AssignedShards {
+			newAssignedShardIDs[i] = assignedShardID
+			i++
+		}
+
+		return newAssignedShardIDs
+	}
+
+	// find shards that are assigned now but were not reported in the previous heartbeat
+	var newAssignedShardIDs []string
+	for assignedShardID := range assignedState.AssignedShards {
+		if _, ok := previousHeartbeat.ReportedShards[assignedShardID]; !ok {
+			newAssignedShardIDs = append(newAssignedShardIDs, assignedShardID)
+		}
+	}
+
+	return newAssignedShardIDs
 }
