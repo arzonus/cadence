@@ -579,3 +579,86 @@ func newMigrationConfig(t *testing.T, configEntries []configEntry) *config.Migra
 	migrationConfig := config.NewMigrationConfig(dc)
 	return migrationConfig
 }
+
+func TestFilterNewlyAssignedShardIDs(t *testing.T) {
+	type args struct {
+		previous *store.HeartbeatState
+		assigned *store.AssignedState
+	}
+	tests := []struct {
+		name     string
+		args     args
+		expected []string
+	}{
+		{
+			name: "nil previousHeartbeat returns all assigned",
+			args: args{
+				previous: nil,
+				assigned: &store.AssignedState{
+					AssignedShards: map[string]*types.ShardAssignment{
+						"shard1": {},
+						"shard2": {},
+					},
+				},
+			},
+			expected: []string{"shard1", "shard2"},
+		},
+		{
+			name: "no new assigned shards",
+			args: args{
+				previous: &store.HeartbeatState{
+					ReportedShards: map[string]*types.ShardStatusReport{
+						"shard1": {},
+						"shard2": {},
+					},
+				},
+				assigned: &store.AssignedState{
+					AssignedShards: map[string]*types.ShardAssignment{
+						"shard1": {},
+						"shard2": {},
+					},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "some new assigned shards",
+			args: args{
+				previous: &store.HeartbeatState{
+					ReportedShards: map[string]*types.ShardStatusReport{
+						"shard1": {},
+					},
+				},
+				assigned: &store.AssignedState{
+					AssignedShards: map[string]*types.ShardAssignment{
+						"shard1": {},
+						"shard2": {},
+						"shard3": {},
+					},
+				},
+			},
+			expected: []string{"shard2", "shard3"},
+		},
+		{
+			name: "empty assigned returns empty",
+			args: args{
+				previous: &store.HeartbeatState{
+					ReportedShards: map[string]*types.ShardStatusReport{
+						"shard1": {},
+					},
+				},
+				assigned: &store.AssignedState{
+					AssignedShards: map[string]*types.ShardAssignment{},
+				},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterNewlyAssignedShardIDs(tt.args.previous, tt.args.assigned)
+			require.ElementsMatch(t, tt.expected, result)
+		})
+	}
+}
