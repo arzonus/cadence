@@ -27,7 +27,7 @@ func TestMeteredStore_GetHeartbeat(t *testing.T) {
 		LastHeartbeat: time.Now().UTC(),
 	}
 	assignedState := &store.AssignedState{
-		LastUpdated: time.Now().UTC(),
+		UpdatedTime: time.Now().UTC(),
 	}
 
 	tests := []struct {

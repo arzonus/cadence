@@ -30,6 +30,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/sharddistributor/config"
@@ -40,11 +41,13 @@ func NewHandler(
 	logger log.Logger,
 	shardDistributionCfg config.ShardDistribution,
 	storage store.Store,
+	timeSource clock.TimeSource,
 ) Handler {
 	handler := &handlerImpl{
 		logger:               logger,
 		shardDistributionCfg: shardDistributionCfg,
 		storage:              storage,
+		timeSource:           timeSource,
 	}
 
 	// prevent us from trying to serve requests before shard distributor is started and ready
@@ -55,7 +58,8 @@ func NewHandler(
 type handlerImpl struct {
 	logger log.Logger
 
-	startWG sync.WaitGroup
+	startWG    sync.WaitGroup
+	timeSource clock.TimeSource
 
 	storage              store.Store
 	shardDistributionCfg config.ShardDistribution
@@ -119,24 +123,33 @@ func (h *handlerImpl) assignEphemeralShard(ctx context.Context, namespace string
 		return nil, fmt.Errorf("get state: %w", err)
 	}
 
-	var executor string
+	var executorID string
 	minAssignedShards := math.MaxInt
 
 	for assignedExecutor, assignment := range state.ShardAssignments {
 		if len(assignment.AssignedShards) < minAssignedShards {
 			minAssignedShards = len(assignment.AssignedShards)
-			executor = assignedExecutor
+			executorID = assignedExecutor
 		}
 	}
 
+	now := h.timeSource.Now().UTC()
+
 	// Assign the shard to the executor with the least assigned shards
-	err = h.storage.AssignShard(ctx, namespace, shardID, executor)
+	err = h.storage.AssignShard(ctx, namespace, store.AssignShardRequest{
+		ShardID:    shardID,
+		ExecutorID: executorID,
+		ShardStats: store.ShardStatistics{
+			LastAssignmentTime: now,
+			UpdatedTime:        now,
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("assign ephemeral shard: %w", err)
 	}
 
 	return &types.GetShardOwnerResponse{
-		Owner:     executor,
+		Owner:     executorID,
 		Namespace: namespace,
 	}, nil
 }

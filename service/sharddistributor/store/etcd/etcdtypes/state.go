@@ -7,7 +7,7 @@ import (
 
 type AssignedState struct {
 	AssignedShards map[string]*types.ShardAssignment `json:"assigned_shards"`
-	LastUpdated    Time                              `json:"last_updated"`
+	UpdatedTime    Time                              `json:"updated_time"`
 	ModRevision    int64                             `json:"mod_revision"`
 }
 
@@ -19,7 +19,7 @@ func (s *AssignedState) ToAssignedState() *store.AssignedState {
 
 	return &store.AssignedState{
 		AssignedShards: s.AssignedShards,
-		LastUpdated:    s.LastUpdated.ToTime(),
+		UpdatedTime:    s.UpdatedTime.ToTime(),
 		ModRevision:    s.ModRevision,
 	}
 }
@@ -32,15 +32,17 @@ func FromAssignedState(src *store.AssignedState) *AssignedState {
 
 	return &AssignedState{
 		AssignedShards: src.AssignedShards,
-		LastUpdated:    Time(src.LastUpdated),
+		UpdatedTime:    Time(src.UpdatedTime),
 		ModRevision:    src.ModRevision,
 	}
 }
 
 type ShardStatistics struct {
-	SmoothedLoad   float64 `json:"smoothed_load"`
-	LastUpdateTime Time    `json:"last_update_time"`
-	LastMoveTime   Time    `json:"last_move_time"`
+	SmoothedLoad                      float64             `json:"smoothed_load"`
+	LastAssignmentTime                Time                `json:"last_assignment_time"`
+	PreviousExecutorLastHeartbeatTime *Time               `json:"previous_executor_last_heartbeat_time,omitempty"`
+	LastHandoverType                  *types.HandoverType `json:"last_handover_type,omitempty"`
+	UpdatedTime                       Time                `json:"updated_time"`
 }
 
 // ToShardStatistics converts the current ShardStatistics to store.ShardStatistics.
@@ -48,11 +50,12 @@ func (s *ShardStatistics) ToShardStatistics() *store.ShardStatistics {
 	if s == nil {
 		return nil
 	}
-
 	return &store.ShardStatistics{
-		SmoothedLoad:   s.SmoothedLoad,
-		LastUpdateTime: s.LastUpdateTime.ToTime(),
-		LastMoveTime:   s.LastMoveTime.ToTime(),
+		SmoothedLoad:                      s.SmoothedLoad,
+		LastAssignmentTime:                s.LastAssignmentTime.ToTime(),
+		PreviousExecutorLastHeartbeatTime: s.PreviousExecutorLastHeartbeatTime.ToTimePtr(),
+		LastHandoverType:                  s.LastHandoverType,
+		UpdatedTime:                       s.UpdatedTime.ToTime(),
 	}
 }
 
@@ -63,8 +66,10 @@ func FromShardStatistics(src *store.ShardStatistics) *ShardStatistics {
 	}
 
 	return &ShardStatistics{
-		SmoothedLoad:   src.SmoothedLoad,
-		LastUpdateTime: Time(src.LastUpdateTime),
-		LastMoveTime:   Time(src.LastMoveTime),
+		SmoothedLoad:                      src.SmoothedLoad,
+		LastAssignmentTime:                Time(src.LastAssignmentTime),
+		PreviousExecutorLastHeartbeatTime: ToTimePtr(src.PreviousExecutorLastHeartbeatTime),
+		LastHandoverType:                  src.LastHandoverType,
+		UpdatedTime:                       Time(src.UpdatedTime),
 	}
 }

@@ -69,11 +69,11 @@ type registerHandlersParams struct {
 func registerHandlers(params registerHandlersParams) error {
 	dispatcher := params.RPCFactory.GetDispatcher()
 
-	rawHandler := handler.NewHandler(params.Logger, params.ShardDistributionCfg, params.Store)
+	rawHandler := handler.NewHandler(params.Logger, params.ShardDistributionCfg, params.Store, params.TimeSource)
 	wrappedHandler := metered.NewMetricsHandler(rawHandler, params.Logger, params.MetricsClient)
 
 	migrationConfig := config.NewMigrationConfig(params.DynamicCollection)
-	executorHandler := handler.NewExecutorHandler(params.Logger, params.Store, params.TimeSource, params.ShardDistributionCfg, migrationConfig)
+	executorHandler := handler.NewExecutorHandler(params.Logger, params.Store, params.TimeSource, params.ShardDistributionCfg, migrationConfig, params.MetricsClient)
 	wrappedExecutor := metered.NewExecutorMetricsExecutor(executorHandler, params.Logger, params.MetricsClient)
 
 	grpcHandler := grpc.NewGRPCHandler(wrappedHandler)

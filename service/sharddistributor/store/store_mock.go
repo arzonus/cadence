@@ -65,17 +65,17 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // AssignShard mocks base method.
-func (m *MockStore) AssignShard(ctx context.Context, namespace, shardID, executorID string) error {
+func (m *MockStore) AssignShard(ctx context.Context, namespace string, request AssignShardRequest) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignShard", ctx, namespace, shardID, executorID)
+	ret := m.ctrl.Call(m, "AssignShard", ctx, namespace, request)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AssignShard indicates an expected call of AssignShard.
-func (mr *MockStoreMockRecorder) AssignShard(ctx, namespace, shardID, executorID any) *gomock.Call {
+func (mr *MockStoreMockRecorder) AssignShard(ctx, namespace, request any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignShard", reflect.TypeOf((*MockStore)(nil).AssignShard), ctx, namespace, shardID, executorID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignShard", reflect.TypeOf((*MockStore)(nil).AssignShard), ctx, namespace, request)
 }
 
 // AssignShards mocks base method.
@@ -149,6 +149,21 @@ func (m *MockStore) GetShardOwner(ctx context.Context, namespace, shardID string
 func (mr *MockStoreMockRecorder) GetShardOwner(ctx, namespace, shardID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardOwner", reflect.TypeOf((*MockStore)(nil).GetShardOwner), ctx, namespace, shardID)
+}
+
+// GetShardStats mocks base method.
+func (m *MockStore) GetShardStats(ctx context.Context, namespace, shardID string) (*ShardStatistics, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardStats", ctx, namespace, shardID)
+	ret0, _ := ret[0].(*ShardStatistics)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardStats indicates an expected call of GetShardStats.
+func (mr *MockStoreMockRecorder) GetShardStats(ctx, namespace, shardID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardStats", reflect.TypeOf((*MockStore)(nil).GetShardStats), ctx, namespace, shardID)
 }
 
 // GetState mocks base method.

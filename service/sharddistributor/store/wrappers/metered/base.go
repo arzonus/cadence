@@ -46,6 +46,8 @@ func (p *base) updateErrorMetricPerNamespace(scope metrics.ScopeIdx, err error, 
 		scopeWithNamespaceTags.IncCounter(metrics.ShardDistributorStoreExecutorNotFound)
 		logger.Error("Executor not found.", tag.Error(err), tag.MetricScope(int(scope)))
 	case errors.Is(err, store.ErrShardNotFound):
+	// this is expected, so we don't want to log it
+	case errors.Is(err, store.ErrShardStatsNotFound):
 		// this is expected, so we don't want to log it
 	default:
 		logger.Error("Store failed with internal error.", tag.Error(err), tag.MetricScope(int(scope))) // int???

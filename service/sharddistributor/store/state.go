@@ -18,14 +18,22 @@ type AssignedState struct {
 	// AssignedShards is the map of shard ID to shard assignment
 	AssignedShards map[string]*types.ShardAssignment
 
-	// LastUpdated is the time we last updated this assignment
-	LastUpdated time.Time
+	// UpdatedTime is the time we last updated this assignment
+	UpdatedTime time.Time
 	ModRevision int64
 }
 
 type NamespaceState struct {
-	Executors        map[string]HeartbeatState
-	ShardStats       map[string]ShardStatistics
+	// Executors holds the heartbeat states of all executors in the namespace.
+	// Key: ExecutorID
+	Executors map[string]HeartbeatState
+
+	// ShardStats holds the statistics of all shards in the namespace.
+	// Key: ShardID
+	ShardStats map[string]ShardStatistics
+
+	// ShardAssignments holds the assignment states of all shards in the namespace.
+	// Key: ExecutorID
 	ShardAssignments map[string]AssignedState
 	GlobalRevision   int64
 }
@@ -34,15 +42,26 @@ type ShardState struct {
 	ExecutorID string
 }
 
+// ShardStatistics holds statistics information about a shard.
+// This information is stored and updated by a leader together with shard assignments.
 type ShardStatistics struct {
-	// EWMA of shard load that persists across executor changes
+	// SmoothedLoad is EWMA of shard load that persists across executor changes
 	SmoothedLoad float64
 
-	// LastUpdateTime is the heartbeat timestamp that last updated the EWMA
-	LastUpdateTime time.Time
+	// LastAssignmentTimeMs is the timestamp when the shard was last assigned
+	LastAssignmentTime time.Time
 
-	// LastMoveTime is the timestamp when this shard was last reassigned
-	LastMoveTime time.Time
+	// PreviousExecutorLastHeartbeatTimeMs is the last heartbeat timestamp
+	// of the previous executor before the handover.
+	// If the shard has never been handed over, this field is nil.
+	PreviousExecutorLastHeartbeatTime *time.Time
+
+	// LastHandoverType indicates the type of handover that occurred during the last reassignment.
+	// If the shard has never been handed over, this field is nil.
+	LastHandoverType *types.HandoverType
+
+	// UpdatedTime is the timestamp when ShardStatistics was updated
+	UpdatedTime time.Time
 }
 
 type ShardOwner struct {

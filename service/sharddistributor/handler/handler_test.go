@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/sharddistributor/config"
@@ -57,6 +58,9 @@ func TestGetShardOwner(t *testing.T) {
 			},
 		},
 	}
+
+	timeSource := clock.NewMockedTimeSource()
+	now := timeSource.Now().UTC()
 
 	tests := []struct {
 		name           string
@@ -154,7 +158,16 @@ func TestGetShardOwner(t *testing.T) {
 					},
 				}, nil)
 				// owner2 has the fewest shards assigned, so we assign the shard to it
-				mockStore.EXPECT().AssignShard(gomock.Any(), _testNamespaceEphemeral, "NON-EXISTING-SHARD", "owner2").Return(nil)
+				mockStore.EXPECT().AssignShard(
+					gomock.Any(), _testNamespaceEphemeral,
+					store.AssignShardRequest{
+						ShardID: "NON-EXISTING-SHARD", ExecutorID: "owner2",
+						ShardStats: store.ShardStatistics{
+							LastAssignmentTime: now,
+							UpdatedTime:        now,
+						},
+					},
+				).Return(nil)
 			},
 			expectedOwner: "owner2",
 			expectedError: false,
@@ -182,7 +195,16 @@ func TestGetShardOwner(t *testing.T) {
 				mockStore.EXPECT().GetShardOwner(gomock.Any(), _testNamespaceEphemeral, "NON-EXISTING-SHARD").Return(nil, store.ErrShardNotFound)
 				mockStore.EXPECT().GetState(gomock.Any(), _testNamespaceEphemeral).Return(&store.NamespaceState{
 					ShardAssignments: map[string]store.AssignedState{"owner1": {AssignedShards: map[string]*types.ShardAssignment{}}}}, nil)
-				mockStore.EXPECT().AssignShard(gomock.Any(), _testNamespaceEphemeral, "NON-EXISTING-SHARD", "owner1").Return(errors.New("assign shard failure"))
+				mockStore.EXPECT().AssignShard(
+					gomock.Any(), _testNamespaceEphemeral,
+					store.AssignShardRequest{
+						ShardID: "NON-EXISTING-SHARD", ExecutorID: "owner1",
+						ShardStats: store.ShardStatistics{
+							LastAssignmentTime: now,
+							UpdatedTime:        now,
+						},
+					},
+				).Return(errors.New("assign shard failure"))
 			},
 			expectedError:  true,
 			expectedErrMsg: "assign shard failure",
@@ -200,6 +222,7 @@ func TestGetShardOwner(t *testing.T) {
 				logger:               logger,
 				shardDistributionCfg: cfg,
 				storage:              mockStorage,
+				timeSource:           timeSource,
 			}
 			if tt.setupMocks != nil {
 				tt.setupMocks(mockStorage)
