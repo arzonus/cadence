@@ -28,10 +28,23 @@ type ShardState struct {
 	ExecutorID string
 }
 
+// ShardStatistics holds statistics information about a shard.
+// This information is stored and updated by a leader together with shard assignments.
 type ShardStatistics struct {
-	SmoothedLoad   float64 `json:"smoothed_load"`    // EWMA of shard load that persists across executor changes
-	LastUpdateTime int64   `json:"last_update_time"` // heartbeat timestamp that last updated the EWMA
-	LastMoveTime   int64   `json:"last_move_time"`   // timestamp for the latest reassignment, used for cooldowns
+	// SmoothedLoad is EWMA of shard load that persists across executor changes
+	SmoothedLoad float64 `json:"smoothed_load"`
+
+	// LastAssignmentTime is the timestamp when the shard was last assigned
+	LastAssignmentTime int64 `json:"last_assignment_time"`
+
+	// PreviousExecutorLastHeartbeatTime is the last heartbeat time of the previous executor before the handover.
+	PreviousExecutorLastHeartbeatTime int64 `json:"previous_executor_last_heartbeat_time"`
+
+	// LastHandoverType indicates the type of handover that occurred during the last reassignment.
+	LastHandoverType types.HandoverType `json:"handover_type"`
+
+	// UpdateTime is the timestamp when ShardStatistics was updated
+	UpdateTime int64 `json:"update_time"`
 }
 
 type ShardOwner struct {

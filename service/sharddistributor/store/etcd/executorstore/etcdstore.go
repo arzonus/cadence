@@ -43,7 +43,7 @@ type shardStatisticsUpdate struct {
 	key             string
 	shardID         string
 	stats           store.ShardStatistics
-	desiredLastMove int64 // intended LastMoveTime for this update
+	desiredLastMove int64 // intended LastAssignmentTime for this update
 }
 
 // ExecutorStoreParams defines the dependencies for the etcd store, for use with fx.
@@ -463,12 +463,12 @@ func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace, shardID,
 			// Statistics already exist, update the last move time.
 			// This can happen if the shard was previously assigned to an executor, and a lookup happens after the executor is deleted,
 			// AssignShard is then called to assign the shard to a new executor.
-			shardStats.LastMoveTime = now
+			shardStats.LastAssignmentTime = now
 		} else {
 			// Statistics don't exist, initialize them.
 			shardStats.SmoothedLoad = 0
-			shardStats.LastUpdateTime = now
-			shardStats.LastMoveTime = now
+			shardStats.UpdateTime = now
+			shardStats.LastAssignmentTime = now
 		}
 
 		// 2. Get the executor state.
@@ -679,7 +679,7 @@ func (s *executorStoreImpl) prepareShardStatisticsUpdates(ctx context.Context, n
 				}
 			} else {
 				stats.SmoothedLoad = 0
-				stats.LastUpdateTime = now
+				stats.UpdateTime = now
 			}
 
 			updates = append(updates, shardStatisticsUpdate{
@@ -698,7 +698,7 @@ func (s *executorStoreImpl) prepareShardStatisticsUpdates(ctx context.Context, n
 // Is intentionally made tolerant of failures since the data is telemetry only.
 func (s *executorStoreImpl) applyShardStatisticsUpdates(ctx context.Context, namespace string, updates []shardStatisticsUpdate) {
 	for _, update := range updates {
-		update.stats.LastMoveTime = update.desiredLastMove
+		update.stats.LastAssignmentTime = update.desiredLastMove
 
 		payload, err := json.Marshal(update.stats)
 		if err != nil {

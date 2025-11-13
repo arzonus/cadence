@@ -22,7 +22,9 @@
 
 package types
 
-import "fmt"
+import (
+	"fmt"
+)
 
 //go:generate enumer -type=ExecutorStatus,ShardStatus,AssignmentStatus,MigrationMode -json -output sharddistributor_statuses_enumer_generated.go
 
@@ -199,6 +201,10 @@ func (v *ExecutorHeartbeatResponse) GetMigrationPhase() (o MigrationMode) {
 
 type ShardAssignment struct {
 	Status AssignmentStatus
+
+	PreviousExecutorLastHeartbeatTime int64
+	LastAssignmentTime                int64
+	LastHandoverType                  HandoverType
 }
 
 func (v *ShardAssignment) GetStatus() (o AssignmentStatus) {
@@ -215,6 +221,22 @@ type AssignmentStatus int32
 const (
 	AssignmentStatusINVALID AssignmentStatus = 0
 	AssignmentStatusREADY   AssignmentStatus = 1
+)
+
+type HandoverType int32
+
+const (
+	HandoverTypeINVALID HandoverType = 0
+
+	// HandoverTypeGRACEFUL
+	// Graceful handover indicates that the shard was transferred in a way that allowed
+	// the previous owner had a chance to finish processing before the shard was reassigned.
+	HandoverTypeGRACEFUL HandoverType = 1
+
+	// HandoverTypeEMERGENCY
+	// Emergency handover indicates that the shard was transferred abruptly without
+	// allowing the previous owner to finish processing.
+	HandoverTypeEMERGENCY HandoverType = 2
 )
 
 type MigrationMode int32
