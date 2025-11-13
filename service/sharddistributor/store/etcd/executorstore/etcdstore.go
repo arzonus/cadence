@@ -605,6 +605,29 @@ func (s *executorStoreImpl) DeleteExecutors(ctx context.Context, namespace strin
 	return nil
 }
 
+func (s *executorStoreImpl) GetShardStats(ctx context.Context, namespace string, shardIDs []string) (map[string]store.ShardStatistics, error) {
+	result := make(map[string]store.ShardStatistics, len(shardIDs))
+	for _, shardID := range shardIDs {
+		shardStatsKey, err := etcdkeys.BuildShardKey(s.prefix, namespace, shardID, etcdkeys.ShardStatisticsKey)
+		if err != nil {
+			return nil, fmt.Errorf("build shard statistics key: %w", err)
+		}
+		resp, err := s.client.Get(ctx, shardStatsKey)
+		if err != nil {
+			return nil, fmt.Errorf("get shard statistics: %w", err)
+		}
+		if len(resp.Kvs) == 0 {
+			continue
+		}
+		var stats store.ShardStatistics
+		if err := common.DecompressAndUnmarshal(resp.Kvs[0].Value, &stats); err != nil {
+			return nil, fmt.Errorf("parse shard statistics: %w", err)
+		}
+		result[shardID] = stats
+	}
+	return result, nil
+}
+
 func (s *executorStoreImpl) DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard store.GuardFunc) error {
 	if len(shardIDs) == 0 {
 		return nil

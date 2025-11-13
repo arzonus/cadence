@@ -38,10 +38,12 @@ type ShardStatistics struct {
 	LastAssignmentTime int64 `json:"last_assignment_time"`
 
 	// PreviousExecutorLastHeartbeatTime is the last heartbeat time of the previous executor before the handover.
-	PreviousExecutorLastHeartbeatTime int64 `json:"previous_executor_last_heartbeat_time"`
+	// If the shard has never been handed over, this field is nil.
+	PreviousExecutorLastHeartbeatTime *int64 `json:"previous_executor_last_heartbeat_time"`
 
 	// LastHandoverType indicates the type of handover that occurred during the last reassignment.
-	LastHandoverType types.HandoverType `json:"handover_type"`
+	// If the shard has never been handed over, this field is nil.
+	LastHandoverType *types.HandoverType `json:"handover_type"`
 
 	// UpdateTime is the timestamp when ShardStatistics was updated
 	UpdateTime int64 `json:"update_time"`

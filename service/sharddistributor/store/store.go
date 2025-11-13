@@ -57,15 +57,22 @@ type AssignShardsRequest struct {
 // Store is a composite interface that combines all storage capabilities.
 type Store interface {
 	GetState(ctx context.Context, namespace string) (*NamespaceState, error)
+
 	AssignShards(ctx context.Context, namespace string, request AssignShardsRequest, guard GuardFunc) error
+	AssignShard(ctx context.Context, namespace, shardID, executorID string) error
+
 	Subscribe(ctx context.Context, namespace string) (<-chan int64, error)
 	DeleteExecutors(ctx context.Context, namespace string, executorIDs []string, guard GuardFunc) error
-	DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard GuardFunc) error
 
 	GetShardOwner(ctx context.Context, namespace, shardID string) (*ShardOwner, error)
 	SubscribeToAssignmentChanges(ctx context.Context, namespace string) (<-chan map[*ShardOwner][]string, func(), error)
-	AssignShard(ctx context.Context, namespace, shardID, executorID string) error
 
 	GetHeartbeat(ctx context.Context, namespace string, executorID string) (*HeartbeatState, *AssignedState, error)
 	RecordHeartbeat(ctx context.Context, namespace, executorID string, state HeartbeatState) error
+
+	// GetShardStats retrieves statistics for the specified shards in the given namespace.
+	// The returned map keys are shard IDs, and the values are the corresponding ShardStatistics.
+	// If a shard ID does not exist, it will not be included in the returned map.
+	GetShardStats(ctx context.Context, namespace string, shardIDs []string) (map[string]ShardStatistics, error)
+	DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard GuardFunc) error
 }
