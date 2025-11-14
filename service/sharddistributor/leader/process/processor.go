@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"slices"
@@ -521,12 +522,11 @@ func (p *namespaceProcessor) prepareShardStats(
 ) *store.ShardStatistics {
 	// Fetch previous shard owners from cache
 	prevExecutor, err := p.shardStore.GetShardOwner(context.Background(), p.namespaceCfg.Name, shardID)
-	if err != nil {
-		p.logger.Warn("Failed to get shard owner for shard statistic", tag.Error(err), tag.ShardKey(shardID))
-		return nil
+	if err != nil && !errors.Is(err, store.ErrShardNotFound) {
+		p.logger.Warn("failed to get shard owner for shard statistic", tag.Error(err), tag.ShardKey(shardID))
 	}
 
-	if prevExecutor.ExecutorID == newExecutorID {
+	if prevExecutor != nil && prevExecutor.ExecutorID == newExecutorID {
 		// No change in assignment, skip updating stats
 		return nil
 	}
@@ -537,9 +537,16 @@ func (p *namespaceProcessor) prepareShardStats(
 		UpdateTime:           assignmentTime.Unix(),
 	}
 
+	// previous executor is not found in cache
+	// return stats without handover info.
+	if prevExecutor == nil {
+		return stat
+	}
+
+	// previous executor heartbeat is not found in namespace state
+	// return stats without handover info.
 	prevExecutorHeartbeat, ok := namespaceState.Executors[prevExecutor.ExecutorID]
 	if !ok {
-		// Previous executor not found, likely deleted. Return stats without handover info.
 		return stat
 	}
 

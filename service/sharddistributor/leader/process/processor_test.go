@@ -91,6 +91,8 @@ func TestRebalanceShards_InitialDistribution(t *testing.T) {
 		"exec-2": {Status: types.ExecutorStatusACTIVE},
 	}
 	mocks.store.EXPECT().GetState(gomock.Any(), mocks.cfg.Name).Return(&store.NamespaceState{Executors: state, GlobalRevision: 1}, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "0").Return(nil, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "1").Return(nil, nil)
 	mocks.election.EXPECT().Guard().Return(store.NopGuard())
 	mocks.store.EXPECT().AssignShards(gomock.Any(), mocks.cfg.Name, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, request store.AssignShardsRequest, _ store.GuardFunc) error {
@@ -128,6 +130,8 @@ func TestRebalanceShards_ExecutorRemoved(t *testing.T) {
 		ShardAssignments: assignments,
 		GlobalRevision:   1,
 	}, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "0").Return(nil, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "1").Return(nil, nil)
 	mocks.election.EXPECT().Guard().Return(store.NopGuard())
 	mocks.store.EXPECT().AssignShards(gomock.Any(), mocks.cfg.Name, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, request store.AssignShardsRequest, _ store.GuardFunc) error {
@@ -269,6 +273,8 @@ func TestRebalance_StoreErrors(t *testing.T) {
 		Executors:      map[string]store.HeartbeatState{"e": {Status: types.ExecutorStatusACTIVE}},
 		GlobalRevision: 1,
 	}, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "0").Return(nil, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "1").Return(nil, nil)
 	mocks.election.EXPECT().Guard().Return(store.NopGuard())
 	mocks.store.EXPECT().AssignShards(gomock.Any(), mocks.cfg.Name, gomock.Any(), gomock.Any()).Return(expectedErr)
 	err = processor.rebalanceShards(context.Background())
@@ -401,6 +407,8 @@ func TestRebalanceShards_WithUnassignedShards(t *testing.T) {
 			},
 		},
 	}
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "0").Return(nil, nil)
+	mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, "1").Return(nil, nil)
 	mocks.store.EXPECT().GetState(gomock.Any(), mocks.cfg.Name).Return(&store.NamespaceState{
 		Executors:        heartbeats,
 		ShardAssignments: assignments,
