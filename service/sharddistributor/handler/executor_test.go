@@ -262,13 +262,11 @@ func TestHeartbeat(t *testing.T) {
 			func(ctx context.Context, namespace string, request store.AssignShardsRequest, guard store.GuardFunc) error {
 				// Expect to Assign the shard in the request
 				expectedRequest := store.AssignShardsRequest{
-					NewState: &store.NamespaceState{
-						ShardAssignments: map[string]store.AssignedState{
-							executorID: {AssignedShards: map[string]*types.ShardAssignment{"shard0": {Status: types.AssignmentStatusREADY}}},
-						},
+					ShardAssignments: map[string]store.AssignedState{
+						executorID: {AssignedShards: map[string]*types.ShardAssignment{"shard0": {Status: types.AssignmentStatusREADY}}},
 					},
 				}
-				require.Equal(t, expectedRequest.NewState.ShardAssignments[executorID].AssignedShards, request.NewState.ShardAssignments[executorID].AssignedShards)
+				require.Equal(t, expectedRequest.ShardAssignments[executorID].AssignedShards, request.ShardAssignments[executorID].AssignedShards)
 				return nil
 			},
 		)

@@ -94,9 +94,9 @@ func TestRebalanceShards_InitialDistribution(t *testing.T) {
 	mocks.election.EXPECT().Guard().Return(store.NopGuard())
 	mocks.store.EXPECT().AssignShards(gomock.Any(), mocks.cfg.Name, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, request store.AssignShardsRequest, _ store.GuardFunc) error {
-			assert.Len(t, request.NewState.ShardAssignments, 2)
-			assert.Len(t, request.NewState.ShardAssignments["exec-1"].AssignedShards, 1)
-			assert.Len(t, request.NewState.ShardAssignments["exec-2"].AssignedShards, 1)
+			assert.Len(t, request.ShardAssignments, 2)
+			assert.Len(t, request.ShardAssignments["exec-1"].AssignedShards, 1)
+			assert.Len(t, request.ShardAssignments["exec-2"].AssignedShards, 1)
 			return nil
 		},
 	)
@@ -131,8 +131,8 @@ func TestRebalanceShards_ExecutorRemoved(t *testing.T) {
 	mocks.election.EXPECT().Guard().Return(store.NopGuard())
 	mocks.store.EXPECT().AssignShards(gomock.Any(), mocks.cfg.Name, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, request store.AssignShardsRequest, _ store.GuardFunc) error {
-			assert.Len(t, request.NewState.ShardAssignments["exec-1"].AssignedShards, 2)
-			assert.Len(t, request.NewState.ShardAssignments["exec-2"].AssignedShards, 0)
+			assert.Len(t, request.ShardAssignments["exec-1"].AssignedShards, 2)
+			assert.Len(t, request.ShardAssignments["exec-2"].AssignedShards, 0)
 			return nil
 		},
 	)
@@ -409,7 +409,7 @@ func TestRebalanceShards_WithUnassignedShards(t *testing.T) {
 	mocks.election.EXPECT().Guard().Return(store.NopGuard())
 	mocks.store.EXPECT().AssignShards(gomock.Any(), mocks.cfg.Name, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, request store.AssignShardsRequest, _ store.GuardFunc) error {
-			assert.Len(t, request.NewState.ShardAssignments["exec-1"].AssignedShards, 2, "Both shards should now be assigned to exec-1")
+			assert.Len(t, request.ShardAssignments["exec-1"].AssignedShards, 2, "Both shards should now be assigned to exec-1")
 			return nil
 		},
 	)

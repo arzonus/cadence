@@ -165,10 +165,8 @@ func (h *executor) assignShardsInCurrentHeartbeat(ctx context.Context, request *
 		}
 	}
 	assignShardsRequest := store.AssignShardsRequest{
-		NewState: &store.NamespaceState{
-			ShardAssignments: map[string]store.AssignedState{
-				request.GetExecutorID(): assignedShards,
-			},
+		ShardAssignments: map[string]store.AssignedState{
+			request.GetExecutorID(): assignedShards,
 		},
 	}
 	err = h.storage.AssignShards(ctx, request.GetNamespace(), assignShardsRequest, store.NopGuard())

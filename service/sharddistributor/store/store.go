@@ -53,8 +53,8 @@ func NopGuard() GuardFunc {
 
 // AssignShardsRequest is a request to assign shards to executors, and remove unused shards.
 type AssignShardsRequest struct {
-	// NewState is the new state of the namespace, containing the new assignments of shards to executors.
-	NewState *NamespaceState
+	// ShardAssignments contains new assignments of shards to executors.
+	ShardAssignments map[string]AssignedState
 }
 
 // Store is a composite interface that combines all storage capabilities.

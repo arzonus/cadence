@@ -337,14 +337,14 @@ func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, 
 	var ops []clientv3.Op
 	var comparisons []clientv3.Cmp
 
-	statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.NewState.ShardAssignments)
+	statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.ShardAssignments)
 	if err != nil {
 		return fmt.Errorf("prepare shard statistics: %w", err)
 	}
 
 	// 1. Prepare operations to update executor states and shard ownership,
 	// and comparisons to check for concurrent modifications.
-	for executorID, state := range request.NewState.ShardAssignments {
+	for executorID, state := range request.ShardAssignments {
 		// Update the executor's assigned_state key.
 		executorStateKey, err := etcdkeys.BuildExecutorKey(s.prefix, namespace, executorID, etcdkeys.ExecutorAssignedStateKey)
 		if err != nil {
