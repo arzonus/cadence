@@ -334,8 +334,8 @@ func (s *executorStoreImpl) Subscribe(ctx context.Context, namespace string) (<-
 }
 
 func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, request store.AssignShardsRequest, guard store.GuardFunc) error {
-	var ops []clientv3.Op
-	var comparisons []clientv3.Cmp
+	var ops = make([]clientv3.Op, 0, len(request.ShardAssignments))
+	var comparisons = make([]clientv3.Cmp, 0, len(request.ShardAssignments))
 
 	statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.ShardAssignments)
 	if err != nil {

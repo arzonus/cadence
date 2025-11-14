@@ -18,8 +18,16 @@ type AssignedState struct {
 }
 
 type NamespaceState struct {
-	Executors        map[string]HeartbeatState
-	ShardStats       map[string]ShardStatistics
+	// Executors holds the heartbeat states of all executors in the namespace.
+	// Key: ExecutorID
+	Executors map[string]HeartbeatState
+
+	// ShardStats holds the statistics of all shards in the namespace.
+	// Key: ShardID
+	ShardStats map[string]ShardStatistics
+
+	// ShardAssignments holds the assignment states of all shards in the namespace.
+	// Key: ExecutorID
 	ShardAssignments map[string]AssignedState
 	GlobalRevision   int64
 }

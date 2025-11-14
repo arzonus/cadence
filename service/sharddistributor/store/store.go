@@ -54,7 +54,13 @@ func NopGuard() GuardFunc {
 // AssignShardsRequest is a request to assign shards to executors, and remove unused shards.
 type AssignShardsRequest struct {
 	// ShardAssignments contains new assignments of shards to executors.
+	// Key: ExecutorID
 	ShardAssignments map[string]AssignedState
+
+	// ShardsStats contains statistics for shards to be updated.
+	// This field is optional and can be nil if no statistics need to be updated.
+	// Key: ShardID
+	ShardStats map[string]ShardStatistics
 }
 
 // Store is a composite interface that combines all storage capabilities.
@@ -67,6 +73,8 @@ type Store interface {
 	Subscribe(ctx context.Context, namespace string) (<-chan int64, error)
 	DeleteExecutors(ctx context.Context, namespace string, executorIDs []string, guard GuardFunc) error
 
+	// GetShardOwner retrieves the owner of a specific shard within a namespace.
+	// It returns ErrShardNotFound if the shard does not exist.
 	GetShardOwner(ctx context.Context, namespace, shardID string) (*ShardOwner, error)
 	SubscribeToAssignmentChanges(ctx context.Context, namespace string) (<-chan map[*ShardOwner][]string, func(), error)
 
