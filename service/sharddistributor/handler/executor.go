@@ -205,6 +205,11 @@ func validateMetadata(metadata map[string]string) error {
 }
 
 func filterNewlyAssignedShardIDs(previousHeartbeat *store.HeartbeatState, assignedState *store.AssignedState) []string {
+	// if assignedState is nil, no shards are assigned
+	if assignedState == nil || len(assignedState.AssignedShards) == 0 {
+		return nil
+	}
+
 	// if previousHeartbeat is nil, all assigned shards are new
 	if previousHeartbeat == nil {
 		var newAssignedShardIDs = make([]string, len(assignedState.AssignedShards))

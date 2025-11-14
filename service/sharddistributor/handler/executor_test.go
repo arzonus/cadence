@@ -270,6 +270,9 @@ func TestHeartbeat(t *testing.T) {
 				return nil
 			},
 		)
+
+		mockStore.EXPECT().GetShardStats(gomock.Any(), namespace, "shard0").
+			Return(&store.ShardStatistics{LastAssignmentTimeMs: now.UnixMilli()}, nil).AnyTimes()
 		mockStore.EXPECT().RecordHeartbeat(gomock.Any(), namespace, executorID, store.HeartbeatState{
 			LastHeartbeat: now.Unix(),
 			Status:        types.ExecutorStatusACTIVE,
@@ -581,83 +584,82 @@ func newMigrationConfig(t *testing.T, configEntries []configEntry) *config.Migra
 }
 
 func TestFilterNewlyAssignedShardIDs(t *testing.T) {
-	type args struct {
+	type testCase struct {
+		name     string
 		previous *store.HeartbeatState
 		assigned *store.AssignedState
-	}
-	tests := []struct {
-		name     string
-		args     args
 		expected []string
-	}{
+	}
+	tests := []testCase{
 		{
-			name: "nil previousHeartbeat returns all assigned",
-			args: args{
-				previous: nil,
-				assigned: &store.AssignedState{
-					AssignedShards: map[string]*types.ShardAssignment{
-						"shard1": {},
-						"shard2": {},
-					},
+			name:     "nil previousHeartbeat returns all assigned",
+			previous: nil,
+			assigned: &store.AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"shard1": {},
+					"shard2": {},
 				},
 			},
 			expected: []string{"shard1", "shard2"},
 		},
 		{
 			name: "no new assigned shards",
-			args: args{
-				previous: &store.HeartbeatState{
-					ReportedShards: map[string]*types.ShardStatusReport{
-						"shard1": {},
-						"shard2": {},
-					},
+			previous: &store.HeartbeatState{
+				ReportedShards: map[string]*types.ShardStatusReport{
+					"shard1": {},
+					"shard2": {},
 				},
-				assigned: &store.AssignedState{
-					AssignedShards: map[string]*types.ShardAssignment{
-						"shard1": {},
-						"shard2": {},
-					},
+			},
+			assigned: &store.AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"shard1": {},
+					"shard2": {},
 				},
 			},
 			expected: []string{},
 		},
 		{
 			name: "some new assigned shards",
-			args: args{
-				previous: &store.HeartbeatState{
-					ReportedShards: map[string]*types.ShardStatusReport{
-						"shard1": {},
-					},
+			previous: &store.HeartbeatState{
+				ReportedShards: map[string]*types.ShardStatusReport{
+					"shard1": {},
 				},
-				assigned: &store.AssignedState{
-					AssignedShards: map[string]*types.ShardAssignment{
-						"shard1": {},
-						"shard2": {},
-						"shard3": {},
-					},
+			},
+			assigned: &store.AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"shard1": {},
+					"shard2": {},
+					"shard3": {},
 				},
 			},
 			expected: []string{"shard2", "shard3"},
 		},
 		{
 			name: "empty assigned returns empty",
-			args: args{
-				previous: &store.HeartbeatState{
-					ReportedShards: map[string]*types.ShardStatusReport{
-						"shard1": {},
-					},
+			previous: &store.HeartbeatState{
+				ReportedShards: map[string]*types.ShardStatusReport{
+					"shard1": {},
 				},
-				assigned: &store.AssignedState{
-					AssignedShards: map[string]*types.ShardAssignment{},
-				},
+			},
+			assigned: &store.AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{},
 			},
 			expected: []string{},
 		},
+		{
+			name: "nil assignedState returns nil",
+			previous: &store.HeartbeatState{
+				ReportedShards: map[string]*types.ShardStatusReport{
+					"shard1": {},
+				},
+			},
+			assigned: nil,
+			expected: nil,
+		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := filterNewlyAssignedShardIDs(tt.args.previous, tt.args.assigned)
+			result := filterNewlyAssignedShardIDs(tt.previous, tt.assigned)
 			require.ElementsMatch(t, tt.expected, result)
 		})
 	}
