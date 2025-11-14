@@ -54,8 +54,8 @@ type ShardStatistics struct {
 	// If the shard has never been handed over, this field is nil.
 	LastHandoverType *types.HandoverType `json:"last_handover_type"`
 
-	// UpdateTime is the timestamp (unix seconds) when ShardStatistics was updated
-	UpdateTime int64 `json:"update_time"`
+	// UpdateTime is the timestamp (unix milliseconds) when ShardStatistics was updated
+	UpdateTimeMs int64 `json:"update_time_ms"`
 }
 
 type ShardOwner struct {

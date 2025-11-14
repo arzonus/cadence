@@ -315,7 +315,7 @@ func (p *namespaceProcessor) cleanupStaleShardStats(ctx context.Context, namespa
 		if _, ok := activeShards[shardID]; ok {
 			continue
 		}
-		recentUpdate := stats.UpdateTime > 0 && (now-stats.UpdateTime) <= shardStatsTTL
+		recentUpdate := stats.UpdateTimeMs > 0 && (now-stats.UpdateTimeMs) <= shardStatsTTL
 		recentMove := stats.LastAssignmentTimeMs > 0 && (now-stats.LastAssignmentTimeMs) <= shardStatsTTL
 		if recentUpdate || recentMove {
 			// Preserve stats that have been updated recently to allow cooldown/load history to
@@ -473,12 +473,6 @@ func (*namespaceProcessor) updateAssignments(shardsToReassign []string, activeEx
 	return true
 }
 
-func (p *namespaceProcessor) addAssignmentsToNamespaceState(namespaceState *store.NamespaceState, currentAssignments map[string][]string) {
-	newState := make(map[string]store.AssignedState)
-
-	namespaceState.ShardAssignments = newState
-}
-
 func (p *namespaceProcessor) prepareAssignShardsRequest(namespaceState *store.NamespaceState, currentAssignments map[string][]string) store.AssignShardsRequest {
 	newShardAssignments := make(map[string]store.AssignedState, len(currentAssignments))
 	newShardStats := make(map[string]store.ShardStatistics, len(currentAssignments))
@@ -534,7 +528,7 @@ func (p *namespaceProcessor) prepareShardStats(
 	stat := &store.ShardStatistics{
 		SmoothedLoad:         0,
 		LastAssignmentTimeMs: assignmentTime.UnixMilli(),
-		UpdateTime:           assignmentTime.Unix(),
+		UpdateTimeMs:         assignmentTime.UnixMilli(),
 	}
 
 	// previous executor is not found in cache
@@ -550,6 +544,7 @@ func (p *namespaceProcessor) prepareShardStats(
 		return stat
 	}
 
+	prevExecutorLastHeartbeat := time.Unix(prevExecutorHeartbeat.LastHeartbeat, 0).UnixMilli()
 	handoverType := types.HandoverTypeEMERGENCY
 
 	// Consider it a graceful handover if the previous executor was in DRAINING or DRAINED status
@@ -559,7 +554,7 @@ func (p *namespaceProcessor) prepareShardStats(
 	}
 
 	stat.LastHandoverType = &handoverType
-	stat.PreviousExecutorLastHeartbeatTimeMs = &prevExecutorHeartbeat.LastHeartbeat
+	stat.PreviousExecutorLastHeartbeatTimeMs = &prevExecutorLastHeartbeat
 	return stat
 }
 

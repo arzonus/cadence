@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/thriftrw/ptr"
 
 	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/log/testlogger"
@@ -217,9 +218,9 @@ func TestCleanupStaleShardStats(t *testing.T) {
 		}
 
 		shardStats := map[string]store.ShardStatistics{
-			"shard-1": {SmoothedLoad: 1.0, UpdateTime: now.Unix(), LastAssignmentTimeMs: now.Unix()},
-			"shard-2": {SmoothedLoad: 2.0, UpdateTime: now.Unix(), LastAssignmentTimeMs: now.Unix()},
-			"shard-3": {SmoothedLoad: 3.0, UpdateTime: now.Add(-2 * time.Second).Unix(), LastAssignmentTimeMs: now.Add(-2 * time.Second).Unix()},
+			"shard-1": {SmoothedLoad: 1.0, UpdateTimeMs: now.Unix(), LastAssignmentTimeMs: now.Unix()},
+			"shard-2": {SmoothedLoad: 2.0, UpdateTimeMs: now.Unix(), LastAssignmentTimeMs: now.Unix()},
+			"shard-3": {SmoothedLoad: 3.0, UpdateTimeMs: now.Add(-2 * time.Second).Unix(), LastAssignmentTimeMs: now.Add(-2 * time.Second).Unix()},
 		}
 
 		namespaceState := &store.NamespaceState{
@@ -247,7 +248,7 @@ func TestCleanupStaleShardStats(t *testing.T) {
 			},
 			ShardAssignments: map[string]store.AssignedState{},
 			ShardStats: map[string]store.ShardStatistics{
-				"shard-1": {SmoothedLoad: 5.0, UpdateTime: now.Unix(), LastAssignmentTimeMs: now.Unix()},
+				"shard-1": {SmoothedLoad: 5.0, UpdateTimeMs: now.Unix(), LastAssignmentTimeMs: now.Unix()},
 			},
 		}
 
@@ -564,6 +565,128 @@ func TestAssignShardsToEmptyExecutors(t *testing.T) {
 
 			assert.Equal(t, c.expectedAssignments, c.inputAssignments)
 			assert.Equal(t, c.expectedDistributonChanged, actualDistributionChanged)
+		})
+	}
+}
+
+func TestPrepareShardStats(t *testing.T) {
+	mocks := setupProcessorTest(t, config.NamespaceTypeFixed)
+	defer mocks.ctrl.Finish()
+	processor := mocks.factory.CreateProcessor(mocks.cfg, mocks.store, mocks.election).(*namespaceProcessor)
+
+	assignmentTime := time.Now()
+	shardID := "shard-1"
+	newExecutorID := "exec-new"
+
+	type testCase struct {
+		name             string
+		getOwner         *store.ShardOwner
+		getOwnerErr      error
+		executors        map[string]store.HeartbeatState
+		expectShardStats *store.ShardStatistics // nil means expect nil result
+	}
+
+	testCases := []testCase{
+		{
+			name:        "error other than shard not found -> stat without handover",
+			getOwner:    nil,
+			getOwnerErr: errors.New("random error"),
+			executors:   map[string]store.HeartbeatState{},
+			expectShardStats: &store.ShardStatistics{
+				SmoothedLoad: 0,
+			},
+		},
+		{
+			name:             "ErrShardNotFound -> stat without handover",
+			getOwner:         nil,
+			getOwnerErr:      store.ErrShardNotFound,
+			executors:        map[string]store.HeartbeatState{},
+			expectShardStats: &store.ShardStatistics{SmoothedLoad: 0},
+		},
+		{
+			name:        "same executor as previous -> nil",
+			getOwner:    &store.ShardOwner{ExecutorID: newExecutorID},
+			getOwnerErr: nil,
+			executors: map[string]store.HeartbeatState{
+				newExecutorID: {
+					Status:        types.ExecutorStatusACTIVE,
+					LastHeartbeat: assignmentTime.Add(-10 * time.Second).Unix()},
+			},
+			expectShardStats: nil,
+		},
+		{
+			name:             "prev executor different but heartbeat missing -> no handover",
+			getOwner:         &store.ShardOwner{ExecutorID: "old-exec"},
+			getOwnerErr:      nil,
+			executors:        map[string]store.HeartbeatState{},
+			expectShardStats: &store.ShardStatistics{SmoothedLoad: 0},
+		},
+		{
+			name:        "prev executor ACTIVE -> emergency handover",
+			getOwner:    &store.ShardOwner{ExecutorID: "old-active"},
+			getOwnerErr: nil,
+			executors: map[string]store.HeartbeatState{
+				"old-active": {
+					Status:        types.ExecutorStatusACTIVE,
+					LastHeartbeat: assignmentTime.Add(-10 * time.Second).Unix(),
+				},
+			},
+			expectShardStats: &store.ShardStatistics{
+				SmoothedLoad:                        0,
+				LastHandoverType:                    types.HandoverTypeEMERGENCY.Ptr(),
+				PreviousExecutorLastHeartbeatTimeMs: ptr.Int64(assignmentTime.Add(-10 * time.Second).Truncate(time.Second).UnixMilli()),
+			},
+		},
+		{
+			name:        "prev executor DRAINING -> graceful handover",
+			getOwner:    &store.ShardOwner{ExecutorID: "old-draining"},
+			getOwnerErr: nil,
+			executors: map[string]store.HeartbeatState{
+				"old-draining": {
+					Status:        types.ExecutorStatusDRAINING,
+					LastHeartbeat: assignmentTime.Add(-10 * time.Second).Unix(),
+				},
+			},
+			expectShardStats: &store.ShardStatistics{
+				SmoothedLoad:                        0,
+				LastHandoverType:                    types.HandoverTypeGRACEFUL.Ptr(),
+				PreviousExecutorLastHeartbeatTimeMs: ptr.Int64(assignmentTime.Add(-10 * time.Second).Truncate(time.Second).UnixMilli()),
+			},
+		},
+		{
+			name:        "prev executor DRAINED -> graceful handover",
+			getOwner:    &store.ShardOwner{ExecutorID: "old-drained"},
+			getOwnerErr: nil,
+			executors: map[string]store.HeartbeatState{
+				"old-drained": {
+					Status:        types.ExecutorStatusDRAINING,
+					LastHeartbeat: assignmentTime.Add(-10 * time.Second).Unix(),
+				},
+			},
+			expectShardStats: &store.ShardStatistics{
+				SmoothedLoad:                        0,
+				LastHandoverType:                    types.HandoverTypeGRACEFUL.Ptr(),
+				PreviousExecutorLastHeartbeatTimeMs: ptr.Int64(assignmentTime.Add(-10 * time.Second).Truncate(time.Second).UnixMilli()),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		mocks.store.EXPECT().GetShardOwner(gomock.Any(), mocks.cfg.Name, shardID).Return(tc.getOwner, tc.getOwnerErr)
+		t.Run(tc.name, func(t *testing.T) {
+			stat := processor.prepareShardStats(&store.NamespaceState{Executors: tc.executors}, shardID, newExecutorID, assignmentTime)
+			if tc.expectShardStats == nil {
+				require.Nil(t, stat)
+				return
+			}
+			require.NotNil(t, stat)
+
+			if tc.expectShardStats != nil {
+				tc.expectShardStats.UpdateTimeMs = assignmentTime.UnixMilli()
+				tc.expectShardStats.LastAssignmentTimeMs = assignmentTime.UnixMilli()
+			}
+
+			require.Equal(t, tc.expectShardStats, stat)
 		})
 	}
 }

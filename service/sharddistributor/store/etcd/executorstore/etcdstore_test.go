@@ -541,7 +541,7 @@ func TestShardStatisticsPersistence(t *testing.T) {
 	require.NoError(t, executorStore.RecordHeartbeat(ctx, tc.Namespace, executorID, store.HeartbeatState{Status: types.ExecutorStatusACTIVE}))
 
 	// 2. Pre-create shard statistics as if coming from prior history
-	stats := store.ShardStatistics{SmoothedLoad: 12.5, UpdateTime: 1234, LastAssignmentTimeMs: 5678}
+	stats := store.ShardStatistics{SmoothedLoad: 12.5, UpdateTimeMs: 1234, LastAssignmentTimeMs: 5678}
 	shardStatsKey, err := etcdkeys.BuildShardKey(tc.EtcdPrefix, tc.Namespace, shardID, etcdkeys.ShardStatisticsKey)
 	require.NoError(t, err)
 	payload, err := json.Marshal(stats)
@@ -558,7 +558,7 @@ func TestShardStatisticsPersistence(t *testing.T) {
 	require.Contains(t, nsState.ShardStats, shardID)
 	updatedStats := nsState.ShardStats[shardID]
 	assert.Equal(t, stats.SmoothedLoad, updatedStats.SmoothedLoad)
-	assert.Equal(t, stats.UpdateTime, updatedStats.UpdateTime)
+	assert.Equal(t, stats.UpdateTimeMs, updatedStats.UpdateTimeMs)
 	// This should be greater than the last move time
 	assert.Greater(t, updatedStats.LastAssignmentTimeMs, stats.LastAssignmentTimeMs)
 

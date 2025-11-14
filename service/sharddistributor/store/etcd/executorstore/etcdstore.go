@@ -467,7 +467,7 @@ func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace, shardID,
 		} else {
 			// Statistics don't exist, initialize them.
 			shardStats.SmoothedLoad = 0
-			shardStats.UpdateTime = now
+			shardStats.UpdateTimeMs = now
 			shardStats.LastAssignmentTimeMs = now
 		}
 
@@ -701,7 +701,7 @@ func (s *executorStoreImpl) prepareShardStatisticsUpdates(ctx context.Context, n
 				}
 			} else {
 				stats.SmoothedLoad = 0
-				stats.UpdateTime = now
+				stats.UpdateTimeMs = now
 			}
 
 			updates = append(updates, shardStatisticsUpdate{
