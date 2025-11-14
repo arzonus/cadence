@@ -15,6 +15,9 @@ var (
 	// ErrShardNotFound is an error that is returned when a shard does not exist.
 	ErrShardNotFound = fmt.Errorf("shard not found")
 
+	// ErrShardStatsNotFound is an error that is returned when shard statistics do not exist.
+	ErrShardStatsNotFound = fmt.Errorf("shard stats not found")
+
 	// ErrVersionConflict is an error that is returned if during operations some precondition failed.
 	ErrVersionConflict = fmt.Errorf("version conflict")
 
@@ -70,9 +73,8 @@ type Store interface {
 	GetHeartbeat(ctx context.Context, namespace string, executorID string) (*HeartbeatState, *AssignedState, error)
 	RecordHeartbeat(ctx context.Context, namespace, executorID string, state HeartbeatState) error
 
-	// GetShardStats retrieves statistics for the specified shards in the given namespace.
-	// The returned map keys are shard IDs, and the values are the corresponding ShardStatistics.
-	// If a shard ID does not exist, it will not be included in the returned map.
-	GetShardStats(ctx context.Context, namespace string, shardIDs []string) (map[string]ShardStatistics, error)
+	// GetShardStats retrieves statistics for a specific shard within a namespace.
+	// It returns ErrShardStatsNotFound if no statistics are found for the given shard.
+	GetShardStats(ctx context.Context, namespace string, shardID string) (*ShardStatistics, error)
 	DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard GuardFunc) error
 }

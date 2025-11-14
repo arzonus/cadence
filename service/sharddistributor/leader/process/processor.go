@@ -315,7 +315,7 @@ func (p *namespaceProcessor) cleanupStaleShardStats(ctx context.Context, namespa
 			continue
 		}
 		recentUpdate := stats.UpdateTime > 0 && (now-stats.UpdateTime) <= shardStatsTTL
-		recentMove := stats.LastAssignmentTime > 0 && (now-stats.LastAssignmentTime) <= shardStatsTTL
+		recentMove := stats.LastAssignmentTimeMs > 0 && (now-stats.LastAssignmentTimeMs) <= shardStatsTTL
 		if recentUpdate || recentMove {
 			// Preserve stats that have been updated recently to allow cooldown/load history to
 			// survive executor churn. These shards are likely awaiting reassignment,

@@ -1476,6 +1476,7 @@ const (
 	ShardDistributorStoreAssignShardScope
 	ShardDistributorStoreAssignShardsScope
 	ShardDistributorStoreDeleteExecutorsScope
+	ShardDistributorStoreGetShardStatsScope
 	ShardDistributorStoreDeleteShardStatsScope
 	ShardDistributorStoreGetHeartbeatScope
 	ShardDistributorStoreGetStateScope

@@ -34,18 +34,19 @@ type ShardStatistics struct {
 	// SmoothedLoad is EWMA of shard load that persists across executor changes
 	SmoothedLoad float64 `json:"smoothed_load"`
 
-	// LastAssignmentTime is the timestamp when the shard was last assigned
-	LastAssignmentTime int64 `json:"last_assignment_time"`
+	// LastAssignmentTimeMs is the timestamp (unix milliseconds) when the shard was last assigned
+	LastAssignmentTimeMs int64 `json:"last_assignment_time"`
 
-	// PreviousExecutorLastHeartbeatTime is the last heartbeat time of the previous executor before the handover.
+	// PreviousExecutorLastHeartbeatTimeMs is the last heartbeat timestamp (unix milliseconds)
+	// of the previous executor before the handover.
 	// If the shard has never been handed over, this field is nil.
-	PreviousExecutorLastHeartbeatTime *int64 `json:"previous_executor_last_heartbeat_time"`
+	PreviousExecutorLastHeartbeatTimeMs *int64 `json:"previous_executor_last_heartbeat_time"`
 
 	// LastHandoverType indicates the type of handover that occurred during the last reassignment.
 	// If the shard has never been handed over, this field is nil.
 	LastHandoverType *types.HandoverType `json:"handover_type"`
 
-	// UpdateTime is the timestamp when ShardStatistics was updated
+	// UpdateTime is the timestamp (unix seconds) when ShardStatistics was updated
 	UpdateTime int64 `json:"update_time"`
 }
 

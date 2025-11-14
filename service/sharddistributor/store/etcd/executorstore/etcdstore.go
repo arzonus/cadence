@@ -43,7 +43,7 @@ type shardStatisticsUpdate struct {
 	key             string
 	shardID         string
 	stats           store.ShardStatistics
-	desiredLastMove int64 // intended LastAssignmentTime for this update
+	desiredLastMove int64 // intended LastAssignmentTimeMs for this update
 }
 
 // ExecutorStoreParams defines the dependencies for the etcd store, for use with fx.
@@ -463,12 +463,12 @@ func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace, shardID,
 			// Statistics already exist, update the last move time.
 			// This can happen if the shard was previously assigned to an executor, and a lookup happens after the executor is deleted,
 			// AssignShard is then called to assign the shard to a new executor.
-			shardStats.LastAssignmentTime = now
+			shardStats.LastAssignmentTimeMs = now
 		} else {
 			// Statistics don't exist, initialize them.
 			shardStats.SmoothedLoad = 0
 			shardStats.UpdateTime = now
-			shardStats.LastAssignmentTime = now
+			shardStats.LastAssignmentTimeMs = now
 		}
 
 		// 2. Get the executor state.
@@ -605,27 +605,26 @@ func (s *executorStoreImpl) DeleteExecutors(ctx context.Context, namespace strin
 	return nil
 }
 
-func (s *executorStoreImpl) GetShardStats(ctx context.Context, namespace string, shardIDs []string) (map[string]store.ShardStatistics, error) {
-	result := make(map[string]store.ShardStatistics, len(shardIDs))
-	for _, shardID := range shardIDs {
-		shardStatsKey, err := etcdkeys.BuildShardKey(s.prefix, namespace, shardID, etcdkeys.ShardStatisticsKey)
-		if err != nil {
-			return nil, fmt.Errorf("build shard statistics key: %w", err)
-		}
-		resp, err := s.client.Get(ctx, shardStatsKey)
-		if err != nil {
-			return nil, fmt.Errorf("get shard statistics: %w", err)
-		}
-		if len(resp.Kvs) == 0 {
-			continue
-		}
-		var stats store.ShardStatistics
-		if err := common.DecompressAndUnmarshal(resp.Kvs[0].Value, &stats); err != nil {
-			return nil, fmt.Errorf("parse shard statistics: %w", err)
-		}
-		result[shardID] = stats
+func (s *executorStoreImpl) GetShardStats(ctx context.Context, namespace string, shardID string) (*store.ShardStatistics, error) {
+	shardStatsKey, err := etcdkeys.BuildShardKey(s.prefix, namespace, shardID, etcdkeys.ShardStatisticsKey)
+	if err != nil {
+		return nil, fmt.Errorf("build shard statistics key: %w", err)
 	}
-	return result, nil
+	resp, err := s.client.Get(ctx, shardStatsKey)
+	if err != nil {
+		return nil, fmt.Errorf("get shard statistics: %w", err)
+	}
+
+	if len(resp.Kvs) == 0 {
+		return nil, store.ErrShardStatsNotFound
+	}
+
+	var stats store.ShardStatistics
+	if err := common.DecompressAndUnmarshal(resp.Kvs[0].Value, &stats); err != nil {
+		return nil, fmt.Errorf("parse shard statistics: %w", err)
+	}
+
+	return &stats, nil
 }
 
 func (s *executorStoreImpl) DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard store.GuardFunc) error {
@@ -721,7 +720,7 @@ func (s *executorStoreImpl) prepareShardStatisticsUpdates(ctx context.Context, n
 // Is intentionally made tolerant of failures since the data is telemetry only.
 func (s *executorStoreImpl) applyShardStatisticsUpdates(ctx context.Context, namespace string, updates []shardStatisticsUpdate) {
 	for _, update := range updates {
-		update.stats.LastAssignmentTime = update.desiredLastMove
+		update.stats.LastAssignmentTimeMs = update.desiredLastMove
 
 		payload, err := json.Marshal(update.stats)
 		if err != nil {

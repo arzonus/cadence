@@ -57,7 +57,7 @@ func (h *executor) Heartbeat(ctx context.Context, request *types.ExecutorHeartbe
 		return nil, fmt.Errorf("get heartbeat: %w", err)
 	}
 
-	now := h.timeSource.Now().UTC()
+	heartbeatTime := h.timeSource.Now().UTC()
 	mode := h.migrationConfiguration.GetMigrationMode(request.Namespace)
 
 	switch mode {
@@ -79,13 +79,13 @@ func (h *executor) Heartbeat(ctx context.Context, request *types.ExecutorHeartbe
 	// Otherwise, we want to do it with controlled frequency - at most every _heartbeatRefreshRate.
 	if previousHeartbeat != nil && request.Status == previousHeartbeat.Status && mode == types.MigrationModeONBOARDED {
 		lastHeartbeatTime := time.Unix(previousHeartbeat.LastHeartbeat, 0)
-		if now.Sub(lastHeartbeatTime) < _heartbeatRefreshRate {
+		if heartbeatTime.Sub(lastHeartbeatTime) < _heartbeatRefreshRate {
 			return _convertResponse(assignedShards, mode), nil
 		}
 	}
 
 	newHeartbeat := store.HeartbeatState{
-		LastHeartbeat:  now.Unix(),
+		LastHeartbeat:  heartbeatTime.Unix(),
 		Status:         request.Status,
 		ReportedShards: request.ShardStatusReports,
 		Metadata:       request.GetMetadata(),
@@ -100,15 +100,16 @@ func (h *executor) Heartbeat(ctx context.Context, request *types.ExecutorHeartbe
 		return nil, fmt.Errorf("record heartbeat: %w", err)
 	}
 
-	go h.emitShardAssignmentMetrics(request.Namespace, now, previousHeartbeat, assignedShards)
+	// emits metrics in background to not block the heartbeat response
+	go h.emitShardAssignmentMetrics(request.Namespace, heartbeatTime, previousHeartbeat, assignedShards)
 
 	return _convertResponse(assignedShards, mode), nil
 }
 
-// emitShardHandoverLatencyMetric emits the following metrics for newly assigned shards:
-// - ShardAssignmentDistributionLatency: time taken since the shard was assigned to now
-// - ShardHandoverLatency: time taken since the previous executor's last heartbeat to now
-func (h *executor) emitShardAssignmentMetrics(namespace string, now time.Time, previousHeartbeat *store.HeartbeatState, assignedState *store.AssignedState) {
+// emitShardAssignmentMetrics emits the following metrics for newly assigned shards:
+// - ShardAssignmentDistributionLatency: time taken since the shard was assigned to heartbeat time
+// - ShardHandoverLatency: time taken since the previous executor's last heartbeat to heartbeat time
+func (h *executor) emitShardAssignmentMetrics(namespace string, heartbeatTime time.Time, previousHeartbeat *store.HeartbeatState, assignedState *store.AssignedState) {
 
 	// find newly assigned shards, if there are none, no handovers happened
 	newAssignedShardIDs := filterNewlyAssignedShardIDs(previousHeartbeat, assignedState)
@@ -117,9 +118,16 @@ func (h *executor) emitShardAssignmentMetrics(namespace string, now time.Time, p
 		return
 	}
 
-	shardStats, err := h.storage.GetShardStats(context.Background(), namespace, newAssignedShardIDs)
+	for _, shardID := range newAssignedShardIDs {
+		h.emitShardAssignmentMetricsPerShard(namespace, shardID, heartbeatTime)
+	}
+}
+
+func (h *executor) emitShardAssignmentMetricsPerShard(namespace string, shardID string, heartbeatTime time.Time) {
+	stats, err := h.storage.GetShardStats(context.Background(), namespace, shardID)
 	if err != nil {
-		h.logger.Warn("Failed to get shard stats for handover latency metric", tag.ShardNamespace(namespace), tag.Error(err), tag.ShardIDs(newAssignedShardIDs))
+		h.logger.Warn("Failed to get shard stats for handover latency metric",
+			tag.ShardNamespace(namespace), tag.Error(err), tag.ShardKey(shardID))
 		return
 	}
 
@@ -127,17 +135,17 @@ func (h *executor) emitShardAssignmentMetrics(namespace string, now time.Time, p
 		Scope(metrics.ShardDistributorHeartbeatScope).
 		Tagged(metrics.NamespaceTag(namespace))
 
-	for _, stat := range shardStats {
-		metricsScope.RecordHistogramDuration(metrics.ShardDistributorShardAssignmentDistributionLatency, now.Sub(time.Unix(stat.LastAssignmentTime, 0)))
+	distributionLatency := heartbeatTime.Sub(time.UnixMilli(stats.LastAssignmentTimeMs))
+	metricsScope.RecordHistogramDuration(metrics.ShardDistributorShardAssignmentDistributionLatency, distributionLatency)
 
-		if stat.PreviousExecutorLastHeartbeatTime == nil || stat.LastHandoverType == nil {
-			// this means that the shard was never assigned before, so no handover happened
-			continue
-		}
-
-		metricsScope.Tagged(metrics.HandoverTypeTag(stat.LastHandoverType.String())).
-			RecordHistogramDuration(metrics.ShardDistributorShardHandoverLatency, now.Sub(time.Unix(*stat.PreviousExecutorLastHeartbeatTime, 0)))
+	if stats.PreviousExecutorLastHeartbeatTimeMs == nil || stats.LastHandoverType == nil {
+		// this means that the shard was never assigned before, so no handover happened
+		return
 	}
+
+	handoverLatency := heartbeatTime.Sub(time.UnixMilli(*stats.PreviousExecutorLastHeartbeatTimeMs))
+	metricsScope.Tagged(metrics.HandoverTypeTag(stats.LastHandoverType.String())).
+		RecordHistogramDuration(metrics.ShardDistributorShardHandoverLatency, handoverLatency)
 }
 
 // assignShardsInCurrentHeartbeat is used during the migration phase to assign the shards to the executors according to what is reported during the heartbeat

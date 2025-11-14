@@ -6,17 +6,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
-
 	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/dynamicconfig"
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
+	metricmocks "github.com/uber/cadence/common/metrics/mocks"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/sharddistributor/config"
 	"github.com/uber/cadence/service/sharddistributor/store"
+	"go.uber.org/mock/gomock"
+	"go.uber.org/thriftrw/ptr"
 )
 
 func TestHeartbeat(t *testing.T) {
@@ -662,3 +664,101 @@ func TestFilterNewlyAssignedShardIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestEmitShardAssignmentMetricsPerShard(t *testing.T) {
+	heartbeatTime := time.Now()
+	namespace := "test-ns"
+	shardID := "shardA"
+
+	testCases := []struct {
+		name     string
+		stats    *store.ShardStatistics
+		statsErr error
+
+		expectedDistributionLatency *time.Duration
+		expectedHandoverLatency     *time.Duration
+		expectedHandoverType        *types.HandoverType
+	}{
+		{
+			name:     "storage error, no metrics",
+			stats:    nil,
+			statsErr: errors.New("db down"),
+		},
+		{
+			name: "only distribution metric (no previous heartbeat / handover)",
+			stats: &store.ShardStatistics{
+				LastAssignmentTimeMs: heartbeatTime.Add(-5 * time.Second).UnixMilli(),
+			},
+			expectedDistributionLatency: ptrDuration(5 * time.Second),
+			expectedHandoverLatency:     nil,
+		},
+		{
+			name: "distribution and graceful handover metrics",
+			stats: &store.ShardStatistics{
+				LastAssignmentTimeMs:                heartbeatTime.Add(-7 * time.Second).UnixMilli(),
+				PreviousExecutorLastHeartbeatTimeMs: ptr.Int64(heartbeatTime.Add(-15 * time.Second).UnixMilli()),
+				LastHandoverType:                    types.HandoverTypeGRACEFUL.Ptr(),
+			},
+			expectedDistributionLatency: ptrDuration(7 * time.Second),
+			expectedHandoverLatency:     ptrDuration(15 * time.Second),
+			expectedHandoverType:        types.HandoverTypeGRACEFUL.Ptr(),
+		},
+		{
+			name: "distribution and emergency handover metrics",
+			stats: &store.ShardStatistics{
+				LastAssignmentTimeMs:                heartbeatTime.Add(-9 * time.Second).UnixMilli(),
+				PreviousExecutorLastHeartbeatTimeMs: ptr.Int64(heartbeatTime.Add(-25 * time.Second).UnixMilli()),
+				LastHandoverType:                    types.HandoverTypeEMERGENCY.Ptr(),
+			},
+			expectedDistributionLatency: ptrDuration(9 * time.Second),
+			expectedHandoverLatency:     ptrDuration(25 * time.Second),
+			expectedHandoverType:        types.HandoverTypeEMERGENCY.Ptr(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// each test independent: new gomock controller & mocks
+			ctrl := gomock.NewController(t)
+			mockStore := store.NewMockStore(ctrl)
+			metricsClient := &metricmocks.Client{}
+			metricsScope := &metricmocks.Scope{}
+
+			// Expectations for GetShardStats
+			mockStore.EXPECT().GetShardStats(gomock.Any(), namespace, shardID).Return(tc.stats, tc.statsErr)
+
+			// Set expectations for assignment metric if expected
+			if tc.expectedDistributionLatency != nil {
+				metricsClient.On("Scope", metrics.ShardDistributorHeartbeatScope).Return(metricsScope).Once()
+				metricsScope.On("Tagged", metrics.NamespaceTag(namespace)).Return(metricsScope).Once()
+
+				metricsScope.On("RecordHistogramDuration", metrics.ShardDistributorShardAssignmentDistributionLatency, mock.Anything).
+					Run(func(args mock.Arguments) {
+						latency := args.Get(1).(time.Duration) // just to consume the argument
+
+						// remove nanosecond precision for comparison
+						require.Equal(t, *tc.expectedDistributionLatency, latency.Truncate(time.Millisecond))
+					})
+			}
+
+			if tc.expectedHandoverLatency != nil {
+				metricsScope.On("Tagged", metrics.HandoverTypeTag(tc.expectedHandoverType.String())).Return(metricsScope).Once()
+				metricsScope.On("RecordHistogramDuration", metrics.ShardDistributorShardHandoverLatency, mock.Anything).
+					Run(func(args mock.Arguments) {
+						latency := args.Get(1).(time.Duration) // just to consume the argument
+
+						// remove nanosecond precision for comparison
+						require.Equal(t, *tc.expectedHandoverLatency, latency.Truncate(time.Millisecond))
+					})
+			}
+
+			exec := &executor{metricsClient: metricsClient, storage: mockStore, logger: testlogger.New(t)}
+			exec.emitShardAssignmentMetricsPerShard(namespace, shardID, heartbeatTime)
+
+			metricsClient.AssertExpectations(t)
+			metricsScope.AssertExpectations(t)
+		})
+	}
+}
+
+func ptrDuration(d time.Duration) *time.Duration { return &d }

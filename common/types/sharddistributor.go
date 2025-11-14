@@ -242,6 +242,11 @@ const (
 	HandoverTypeEMERGENCY HandoverType = 2
 )
 
+// Ptr returns a pointer to the HandoverType value.
+func (t HandoverType) Ptr() *HandoverType {
+	return &t
+}
+
 type MigrationMode int32
 
 const (
