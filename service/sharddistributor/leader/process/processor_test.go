@@ -218,9 +218,9 @@ func TestCleanupStaleShardStats(t *testing.T) {
 		}
 
 		shardStats := map[string]store.ShardStatistics{
-			"shard-1": {SmoothedLoad: 1.0, UpdateTimeMs: now.Unix(), LastAssignmentTimeMs: now.Unix()},
-			"shard-2": {SmoothedLoad: 2.0, UpdateTimeMs: now.Unix(), LastAssignmentTimeMs: now.Unix()},
-			"shard-3": {SmoothedLoad: 3.0, UpdateTimeMs: now.Add(-2 * time.Second).Unix(), LastAssignmentTimeMs: now.Add(-2 * time.Second).Unix()},
+			"shard-1": {SmoothedLoad: 1.0, UpdateTimeMs: now.UnixMilli(), LastAssignmentTimeMs: now.UnixMilli()},
+			"shard-2": {SmoothedLoad: 2.0, UpdateTimeMs: now.UnixMilli(), LastAssignmentTimeMs: now.UnixMilli()},
+			"shard-3": {SmoothedLoad: 3.0, UpdateTimeMs: now.Add(-2 * time.Second).UnixMilli(), LastAssignmentTimeMs: now.Add(-2 * time.Second).UnixMilli()},
 		}
 
 		namespaceState := &store.NamespaceState{
@@ -248,7 +248,7 @@ func TestCleanupStaleShardStats(t *testing.T) {
 			},
 			ShardAssignments: map[string]store.AssignedState{},
 			ShardStats: map[string]store.ShardStatistics{
-				"shard-1": {SmoothedLoad: 5.0, UpdateTimeMs: now.Unix(), LastAssignmentTimeMs: now.Unix()},
+				"shard-1": {SmoothedLoad: 5.0, UpdateTimeMs: now.UnixMilli(), LastAssignmentTimeMs: now.UnixMilli()},
 			},
 		}
 
