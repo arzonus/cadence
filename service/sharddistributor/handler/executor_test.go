@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"errors"
-	"github.com/uber/cadence/common/ptr"
 	"testing"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
 	metricmocks "github.com/uber/cadence/common/metrics/mocks"
+	"github.com/uber/cadence/common/ptr"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/sharddistributor/config"
 	"github.com/uber/cadence/service/sharddistributor/store"

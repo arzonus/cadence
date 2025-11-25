@@ -57,6 +57,7 @@ func FromShardHandoverStats(src *store.ShardHandoverStats) *ShardHandoverStats {
 	}
 }
 
+// ToShardHandoverStats converts the current ShardHandoverStats to store.ShardHandoverStats.
 func ToShardHandoverStats(src *ShardHandoverStats) *store.ShardHandoverStats {
 	if src == nil {
 		return nil

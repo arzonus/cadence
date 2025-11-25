@@ -330,3 +330,102 @@ func TestShardStatistics_JSONMarshalling(t *testing.T) {
 	require.Equal(t, time.Time(state.LastUpdateTime).UnixNano(), time.Time(unmarshalled.LastUpdateTime).UnixNano())
 	require.Equal(t, time.Time(state.LastMoveTime).UnixNano(), time.Time(unmarshalled.LastMoveTime).UnixNano())
 }
+
+func TestShardHandoverStats_FieldNumberMatched(t *testing.T) {
+	require.Equal(t,
+		reflect.TypeOf(ShardHandoverStats{}).NumField(),
+		reflect.TypeOf(store.ShardHandoverStats{}).NumField(),
+		"ShardHandoverStats field count mismatch with store.ShardHandoverStats; ensure conversion is updated",
+	)
+}
+
+func TestShardHandoverStats_ToShardHandoverStats(t *testing.T) {
+	tests := map[string]struct {
+		input  *ShardHandoverStats
+		expect *store.ShardHandoverStats
+	}{
+		"nil": {
+			input:  nil,
+			expect: nil,
+		},
+		"success": {
+			input: &ShardHandoverStats{
+				PreviousExecutorLastHeartbeatTime: Time(time.Date(2025, 11, 18, 18, 0, 0, 555555555, time.UTC)),
+				HandoverType:                      types.HandoverTypeGRACEFUL,
+			},
+			expect: &store.ShardHandoverStats{
+				PreviousExecutorLastHeartbeatTime: time.Date(2025, 11, 18, 18, 0, 0, 555555555, time.UTC),
+				HandoverType:                      types.HandoverTypeGRACEFUL,
+			},
+		},
+	}
+
+	for name, c := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := ToShardHandoverStats(c.input)
+			if c.expect == nil {
+				require.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			require.Equal(t, c.input.HandoverType, got.HandoverType)
+			require.Equal(t, time.Time(c.input.PreviousExecutorLastHeartbeatTime).UnixNano(), got.PreviousExecutorLastHeartbeatTime.UnixNano())
+		})
+	}
+}
+
+func TestShardHandoverStats_FromShardHandoverStats(t *testing.T) {
+	tests := map[string]struct {
+		input  *store.ShardHandoverStats
+		expect *ShardHandoverStats
+	}{
+		"nil": {
+			input:  nil,
+			expect: nil,
+		},
+		"success": {
+			input: &store.ShardHandoverStats{
+				PreviousExecutorLastHeartbeatTime: time.Date(2025, 11, 18, 19, 0, 0, 666666666, time.UTC),
+				HandoverType:                      types.HandoverTypeGRACEFUL,
+			},
+			expect: &ShardHandoverStats{
+				PreviousExecutorLastHeartbeatTime: Time(time.Date(2025, 11, 18, 19, 0, 0, 666666666, time.UTC)),
+				HandoverType:                      types.HandoverTypeGRACEFUL,
+			},
+		},
+	}
+
+	for name, c := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := FromShardHandoverStats(c.input)
+			if c.expect == nil {
+				require.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			require.Equal(t, c.input.HandoverType, got.HandoverType)
+			require.Equal(t, c.input.PreviousExecutorLastHeartbeatTime.UnixNano(), time.Time(got.PreviousExecutorLastHeartbeatTime).UnixNano())
+		})
+	}
+}
+
+func TestShardHandoverStats_JSONMarshalling(t *testing.T) {
+	const jsonStr = `{"previous_executor_last_heartbeat_time":"2025-11-18T20:00:00.777777777Z","handover_type":"GRACEFUL"}`
+
+	stats := &ShardHandoverStats{
+		PreviousExecutorLastHeartbeatTime: Time(time.Date(2025, 11, 18, 20, 0, 0, 777777777, time.UTC)),
+		HandoverType:                      types.HandoverTypeGRACEFUL,
+	}
+
+	// Marshal to JSON
+	b, err := json.Marshal(stats)
+	require.NoError(t, err)
+	require.JSONEq(t, jsonStr, string(b))
+
+	// Unmarshal from JSON
+	var unmarshalled ShardHandoverStats
+	err = json.Unmarshal([]byte(jsonStr), &unmarshalled)
+	require.NoError(t, err)
+	require.Equal(t, stats.HandoverType, unmarshalled.HandoverType)
+	require.Equal(t, time.Time(stats.PreviousExecutorLastHeartbeatTime).UnixNano(), time.Time(unmarshalled.PreviousExecutorLastHeartbeatTime).UnixNano())
+}
