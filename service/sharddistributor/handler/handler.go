@@ -130,10 +130,7 @@ func (h *handlerImpl) assignEphemeralShard(ctx context.Context, namespace string
 	}
 
 	// Assign the shard to the executor with the least assigned shards
-	err = h.storage.AssignShard(ctx, namespace, store.AssignShardRequest{
-		ShardID:    shardID,
-		ExecutorID: executorID,
-	})
+	err = h.storage.AssignShard(ctx, namespace, shardID, executorID)
 	if err != nil {
 		return nil, &types.InternalServiceError{Message: fmt.Sprintf("failed to assign ephemeral shard: %v", err)}
 	}

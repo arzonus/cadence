@@ -441,10 +441,7 @@ func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, 
 	return nil
 }
 
-func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace string, request store.AssignShardRequest) error {
-	shardID := request.ShardID
-	executorID := request.ExecutorID
-
+func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace string, shardID string, executorID string) error {
 	assignedState := etcdkeys.BuildExecutorKey(s.prefix, namespace, executorID, etcdkeys.ExecutorAssignedStateKey)
 	statusKey := etcdkeys.BuildExecutorKey(s.prefix, namespace, executorID, etcdkeys.ExecutorStatusKey)
 	shardStatsKey := etcdkeys.BuildShardKey(s.prefix, namespace, shardID, etcdkeys.ShardStatisticsKey)

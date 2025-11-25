@@ -40,9 +40,9 @@ func NewStore(
 	}
 }
 
-func (c *meteredStore) AssignShard(ctx context.Context, namespace string, request _sourceStore.AssignShardRequest) (err error) {
+func (c *meteredStore) AssignShard(ctx context.Context, namespace string, shardID string, executorID string) (err error) {
 	op := func() error {
-		err = c.wrapped.AssignShard(ctx, namespace, request)
+		err = c.wrapped.AssignShard(ctx, namespace, shardID, executorID)
 		return err
 	}
 
