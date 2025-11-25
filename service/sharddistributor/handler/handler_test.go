@@ -154,7 +154,12 @@ func TestGetShardOwner(t *testing.T) {
 					},
 				}, nil)
 				// owner2 has the fewest shards assigned, so we assign the shard to it
-				mockStore.EXPECT().AssignShard(gomock.Any(), _testNamespaceEphemeral, "NON-EXISTING-SHARD", "owner2").Return(nil)
+				mockStore.EXPECT().AssignShard(
+					gomock.Any(), _testNamespaceEphemeral,
+					store.AssignShardRequest{
+						ShardID: "NON-EXISTING-SHARD", ExecutorID: "owner2",
+					},
+				).Return(nil)
 			},
 			expectedOwner: "owner2",
 			expectedError: false,
@@ -182,7 +187,12 @@ func TestGetShardOwner(t *testing.T) {
 				mockStore.EXPECT().GetShardOwner(gomock.Any(), _testNamespaceEphemeral, "NON-EXISTING-SHARD").Return(nil, store.ErrShardNotFound)
 				mockStore.EXPECT().GetState(gomock.Any(), _testNamespaceEphemeral).Return(&store.NamespaceState{
 					ShardAssignments: map[string]store.AssignedState{"owner1": {AssignedShards: map[string]*types.ShardAssignment{}}}}, nil)
-				mockStore.EXPECT().AssignShard(gomock.Any(), _testNamespaceEphemeral, "NON-EXISTING-SHARD", "owner1").Return(errors.New("assign shard failure"))
+				mockStore.EXPECT().AssignShard(
+					gomock.Any(), _testNamespaceEphemeral,
+					store.AssignShardRequest{
+						ShardID: "NON-EXISTING-SHARD", ExecutorID: "owner1",
+					},
+				).Return(errors.New("assign shard failure"))
 			},
 			expectedError:  true,
 			expectedErrMsg: "assign shard failure",

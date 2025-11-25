@@ -45,6 +45,34 @@ func TestAssignedState_ToAssignedState(t *testing.T) {
 				ModRevision: 42,
 			},
 		},
+		"success with map": {
+			input: &AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"1": {Status: types.AssignmentStatusREADY},
+				},
+				ShardHandoverStats: map[string]ShardHandoverStats{
+					"1": {
+						PreviousExecutorLastHeartbeatTime: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
+						HandoverType:                      types.HandoverTypeGRACEFUL,
+					},
+				},
+				LastUpdated: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
+				ModRevision: 42,
+			},
+			expect: &store.AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"1": {Status: types.AssignmentStatusREADY},
+				},
+				ShardHandoverStats: map[string]store.ShardHandoverStats{
+					"1": {
+						PreviousExecutorLastHeartbeatTime: time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC),
+						HandoverType:                      types.HandoverTypeGRACEFUL,
+					},
+				},
+				LastUpdated: time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC),
+				ModRevision: 42,
+			},
+		},
 	}
 
 	for name, c := range tests {
@@ -91,6 +119,34 @@ func TestAssignedState_FromAssignedState(t *testing.T) {
 				ModRevision: 77,
 			},
 		},
+		"with map": {
+			input: &store.AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"9": {Status: types.AssignmentStatusREADY},
+				},
+				ShardHandoverStats: map[string]store.ShardHandoverStats{
+					"9": {
+						PreviousExecutorLastHeartbeatTime: time.Date(2025, 11, 18, 13, 0, 0, 987654321, time.UTC),
+						HandoverType:                      types.HandoverTypeGRACEFUL,
+					},
+				},
+				LastUpdated: time.Date(2025, 11, 18, 13, 0, 0, 987654321, time.UTC),
+				ModRevision: 77,
+			},
+			expect: &AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"9": {Status: types.AssignmentStatusREADY},
+				},
+				ShardHandoverStats: map[string]ShardHandoverStats{
+					"9": {
+						PreviousExecutorLastHeartbeatTime: Time(time.Date(2025, 11, 18, 13, 0, 0, 987654321, time.UTC)),
+						HandoverType:                      types.HandoverTypeGRACEFUL,
+					},
+				},
+				LastUpdated: Time(time.Date(2025, 11, 18, 13, 0, 0, 987654321, time.UTC)),
+				ModRevision: 77,
+			},
+		},
 	}
 
 	for name, c := range tests {
@@ -112,29 +168,62 @@ func TestAssignedState_FromAssignedState(t *testing.T) {
 }
 
 func TestAssignedState_JSONMarshalling(t *testing.T) {
-	const jsonStr = `{"assigned_shards":{"1":{"status":"READY"}},"last_updated":"2025-11-18T12:00:00.123456789Z","mod_revision":42}`
-
-	state := &AssignedState{
-		AssignedShards: map[string]*types.ShardAssignment{
-			"1": {Status: types.AssignmentStatusREADY},
+	tests := map[string]struct {
+		input   *AssignedState
+		jsonStr string
+	}{
+		"simple": {
+			input: &AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"1": {Status: types.AssignmentStatusREADY},
+				},
+				LastUpdated: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
+				ModRevision: 42,
+			},
+			jsonStr: `{"assigned_shards":{"1":{"status":"READY"}},"last_updated":"2025-11-18T12:00:00.123456789Z","mod_revision":42}`,
 		},
-		LastUpdated: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
-		ModRevision: 42,
+		"with map": {
+			input: &AssignedState{
+				AssignedShards: map[string]*types.ShardAssignment{
+					"1": {Status: types.AssignmentStatusREADY},
+				},
+				ShardHandoverStats: map[string]ShardHandoverStats{
+					"1": {
+						PreviousExecutorLastHeartbeatTime: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
+						HandoverType:                      types.HandoverTypeGRACEFUL,
+					},
+				},
+				LastUpdated: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
+				ModRevision: 42,
+			},
+			jsonStr: `{"assigned_shards":{"1":{"status":"READY"}},"shard_handover_stats":{"1":{"previous_executor_last_heartbeat_time":"2025-11-18T12:00:00.123456789Z","handover_type":"GRACEFUL"}},"last_updated":"2025-11-18T12:00:00.123456789Z","mod_revision":42}`,
+		},
 	}
 
-	// Marshal to JSON
-	b, err := json.Marshal(state)
-	require.NoError(t, err)
-	require.JSONEq(t, jsonStr, string(b))
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Marshal to JSON
+			b, err := json.Marshal(tc.input)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.jsonStr, string(b))
 
-	// Unmarshal from JSON
-	var unmarshalled AssignedState
-	err = json.Unmarshal([]byte(jsonStr), &unmarshalled)
-	require.NoError(t, err)
-	require.Equal(t, state.AssignedShards["1"].Status, unmarshalled.AssignedShards["1"].Status)
-	require.Equal(t, time.Time(state.LastUpdated).UnixNano(), time.Time(unmarshalled.LastUpdated).UnixNano())
-	require.Equal(t, state.ModRevision, unmarshalled.ModRevision)
+			// Unmarshal from JSON
+			var unmarshalled AssignedState
+			err = json.Unmarshal([]byte(tc.jsonStr), &unmarshalled)
+			require.NoError(t, err)
+			require.Equal(t, tc.input.AssignedShards["1"].Status, unmarshalled.AssignedShards["1"].Status)
+			require.Equal(t, time.Time(tc.input.LastUpdated).UnixNano(), time.Time(unmarshalled.LastUpdated).UnixNano())
+			require.Equal(t, tc.input.ModRevision, unmarshalled.ModRevision)
+			if tc.input.ShardHandoverStats != nil {
+				require.NotNil(t, unmarshalled.ShardHandoverStats)
+				require.Equal(t, tc.input.ShardHandoverStats["1"].HandoverType, unmarshalled.ShardHandoverStats["1"].HandoverType)
+				require.Equal(t, time.Time(tc.input.ShardHandoverStats["1"].PreviousExecutorLastHeartbeatTime).UnixNano(),
+					time.Time(unmarshalled.ShardHandoverStats["1"].PreviousExecutorLastHeartbeatTime).UnixNano())
+			}
+		})
+	}
 }
+
 func TestShardStatistics_FieldNumberMatched(t *testing.T) {
 	require.Equal(t,
 		reflect.TypeOf(ShardStatistics{}).NumField(),

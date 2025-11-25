@@ -50,25 +50,48 @@ func NopGuard() GuardFunc {
 
 // AssignShardsRequest is a request to assign shards to executors, and remove unused shards.
 type AssignShardsRequest struct {
-	// NewState is the new state of the namespace, containing the new assignments of shards to executors.
-	NewState *NamespaceState
+	// ShardAssignments contains new assignments of shards to executors.
+	// Key: ExecutorID
+	ShardAssignments map[string]AssignedState
+
 	// ExecutorsToDelete maps executor IDs to their expected ModRevision for deletion.
 	// The ModRevision is used to ensure the executor's assigned state hasn't changed since we decided to delete it.
 	ExecutorsToDelete map[string]int64
 }
 
+type AssignShardRequest struct {
+	// ShardID is the ID of the shard to assign.
+	ShardID string
+
+	// ExecutorID is the ID of the executor to assign the shard to.
+	ExecutorID string
+
+	// ShardStats contains statistics to update for the shard.
+	ShardHandoverStats *ShardHandoverStats
+}
+
 // Store is a composite interface that combines all storage capabilities.
 type Store interface {
 	GetState(ctx context.Context, namespace string) (*NamespaceState, error)
+
+	// AssignShards assigns multiple shards to executors within a namespace.
+	// It also updates shard statistics and deletes specified executors
+	// The operation is atomic and guarded by the provided GuardFunc.
 	AssignShards(ctx context.Context, namespace string, request AssignShardsRequest, guard GuardFunc) error
+
+	// AssignShard assigns a single shard to an executor within a namespace.
+	AssignShard(ctx context.Context, namespace string, request AssignShardRequest) error
+
 	Subscribe(ctx context.Context, namespace string) (<-chan int64, error)
 	DeleteExecutors(ctx context.Context, namespace string, executorIDs []string, guard GuardFunc) error
-	DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard GuardFunc) error
 
+	// GetShardOwner retrieves the owner of a specific shard within a namespace.
+	// It returns ErrShardNotFound if the shard does not exist.
 	GetShardOwner(ctx context.Context, namespace, shardID string) (*ShardOwner, error)
 	SubscribeToAssignmentChanges(ctx context.Context, namespace string) (<-chan map[*ShardOwner][]string, func(), error)
-	AssignShard(ctx context.Context, namespace, shardID, executorID string) error
 
 	GetHeartbeat(ctx context.Context, namespace string, executorID string) (*HeartbeatState, *AssignedState, error)
 	RecordHeartbeat(ctx context.Context, namespace, executorID string, state HeartbeatState) error
+
+	DeleteShardStats(ctx context.Context, namespace string, shardIDs []string, guard GuardFunc) error
 }

@@ -347,10 +347,10 @@ func (s *executorStoreImpl) Subscribe(ctx context.Context, namespace string) (<-
 }
 
 func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, request store.AssignShardsRequest, guard store.GuardFunc) error {
-	var ops []clientv3.Op
-	var comparisons []clientv3.Cmp
+	var ops = make([]clientv3.Op, 0, len(request.ShardAssignments)+len(request.ExecutorsToDelete))
+	var comparisons = make([]clientv3.Cmp, 0, len(request.ShardAssignments)+len(request.ExecutorsToDelete))
 
-	statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.NewState.ShardAssignments)
+	statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.ShardAssignments)
 	if err != nil {
 		return fmt.Errorf("prepare shard statistics: %w", err)
 	}
@@ -371,7 +371,7 @@ func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, 
 
 	// 2. Prepare operations to update executor states and shard ownership,
 	// and comparisons to check for concurrent modifications.
-	for executorID, state := range request.NewState.ShardAssignments {
+	for executorID, state := range request.ShardAssignments {
 		// Update the executor's assigned_state key.
 		executorStateKey := etcdkeys.BuildExecutorKey(s.prefix, namespace, executorID, etcdkeys.ExecutorAssignedStateKey)
 		value, err := json.Marshal(etcdtypes.FromAssignedState(&state))
@@ -441,7 +441,10 @@ func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, 
 	return nil
 }
 
-func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace, shardID, executorID string) error {
+func (s *executorStoreImpl) AssignShard(ctx context.Context, namespace string, request store.AssignShardRequest) error {
+	shardID := request.ShardID
+	executorID := request.ExecutorID
+
 	assignedState := etcdkeys.BuildExecutorKey(s.prefix, namespace, executorID, etcdkeys.ExecutorAssignedStateKey)
 	statusKey := etcdkeys.BuildExecutorKey(s.prefix, namespace, executorID, etcdkeys.ExecutorStatusKey)
 	shardStatsKey := etcdkeys.BuildShardKey(s.prefix, namespace, shardID, etcdkeys.ShardStatisticsKey)
