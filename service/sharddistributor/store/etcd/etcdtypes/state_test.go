@@ -180,7 +180,7 @@ func TestAssignedState_JSONMarshalling(t *testing.T) {
 				LastUpdated: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
 				ModRevision: 42,
 			},
-			jsonStr: `{"assigned_shards":{"1":{"status":"AssignmentStatusREADY"}},"last_updated":"2025-11-18T12:00:00.123456789Z","mod_revision":42}`,
+			jsonStr: `{"assigned_shards":{"1":{"status":"AssignmentStatusREADY"}},"last_updated":"2025-11-18T12:00:00.123456789Z"}`,
 		},
 		"with map": {
 			input: &AssignedState{
@@ -196,7 +196,7 @@ func TestAssignedState_JSONMarshalling(t *testing.T) {
 				LastUpdated: Time(time.Date(2025, 11, 18, 12, 0, 0, 123456789, time.UTC)),
 				ModRevision: 42,
 			},
-			jsonStr: `{"assigned_shards":{"1":{"status":"AssignmentStatusREADY"}},"shard_handover_stats":{"1":{"previous_executor_last_heartbeat_time":"2025-11-18T12:00:00.123456789Z","handover_type":"HandoverTypeGRACEFUL"}},"last_updated":"2025-11-18T12:00:00.123456789Z","mod_revision":42}`,
+			jsonStr: `{"assigned_shards":{"1":{"status":"AssignmentStatusREADY"}},"shard_handover_stats":{"1":{"previous_executor_last_heartbeat_time":"2025-11-18T12:00:00.123456789Z","handover_type":"HandoverTypeGRACEFUL"}},"last_updated":"2025-11-18T12:00:00.123456789Z"}`,
 		},
 	}
 
