@@ -350,10 +350,10 @@ func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, 
 	var ops []clientv3.Op
 	var comparisons []clientv3.Cmp
 
-	statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.NewState.ShardAssignments)
-	if err != nil {
-		return fmt.Errorf("prepare shard statistics: %w", err)
-	}
+	//statsUpdates, err := s.prepareShardStatisticsUpdates(ctx, namespace, request.NewState.ShardAssignments)
+	//if err != nil {
+	//	return fmt.Errorf("prepare shard statistics: %w", err)
+	//}
 
 	// 1. Prepare operations to delete stale executors and add comparisons to ensure they haven't been modified
 	for executorID, expectedModRevision := range request.ExecutorsToDelete {
@@ -435,8 +435,8 @@ func (s *executorStoreImpl) AssignShards(ctx context.Context, namespace string, 
 		return fmt.Errorf("%w: transaction failed, a shard may have been concurrently assigned", store.ErrVersionConflict)
 	}
 
-	// Apply shard statistics updates outside the main transaction to stay within etcd's max operations per txn.
-	s.applyShardStatisticsUpdates(ctx, namespace, statsUpdates)
+	//// Apply shard statistics updates outside the main transaction to stay within etcd's max operations per txn.
+	//s.applyShardStatisticsUpdates(ctx, namespace, statsUpdates)
 
 	return nil
 }

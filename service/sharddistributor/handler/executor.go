@@ -167,6 +167,7 @@ func (h *executor) assignShardsInCurrentHeartbeat(ctx context.Context, request *
 			},
 		},
 	}
+
 	err = h.storage.AssignShards(ctx, request.GetNamespace(), assignShardsRequest, store.NopGuard())
 	if err != nil {
 		return nil, &types.InternalServiceError{Message: fmt.Sprintf("failed to assign shards in the current heartbeat: %v", err)}
