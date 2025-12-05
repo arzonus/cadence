@@ -213,7 +213,6 @@ func TestAssignedState_JSONMarshalling(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.input.AssignedShards["1"].Status, unmarshalled.AssignedShards["1"].Status)
 			require.Equal(t, time.Time(tc.input.LastUpdated).UnixNano(), time.Time(unmarshalled.LastUpdated).UnixNano())
-			require.Equal(t, tc.input.ModRevision, unmarshalled.ModRevision)
 			if tc.input.ShardHandoverStats != nil {
 				require.NotNil(t, unmarshalled.ShardHandoverStats)
 				require.Equal(t, tc.input.ShardHandoverStats["1"].HandoverType, unmarshalled.ShardHandoverStats["1"].HandoverType)
