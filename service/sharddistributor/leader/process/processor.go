@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/fx"
 
+	"github.com/google/uuid"
 	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/log/tag"
@@ -95,8 +96,12 @@ func NewProcessorFactory(
 // CreateProcessor creates a new processor for the given namespace
 func (f *processorFactory) CreateProcessor(cfg config.Namespace, shardStore store.Store, election store.Election) Processor {
 	return &namespaceProcessor{
-		namespaceCfg:  cfg,
-		logger:        f.logger.WithTags(tag.ComponentLeaderProcessor, tag.ShardNamespace(cfg.Name)),
+		namespaceCfg: cfg,
+		logger: f.logger.WithTags(tag.ComponentLeaderProcessor,
+			tag.ShardNamespace(cfg.Name),
+			// to differentiate multiple processors in logs
+			tag.Dynamic("processorID", uuid.New().String()),
+		),
 		timeSource:    f.timeSource,
 		cfg:           f.cfg,
 		shardStore:    shardStore,
@@ -324,7 +329,12 @@ func (p *namespaceProcessor) rebalanceShards(ctx context.Context) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, p.cfg.Period)
 	defer cancel()
 
-	metricsLoopScope := p.metricsClient.Scope(metrics.ShardDistributorAssignLoopScope)
+	metricsLoopScope := p.metricsClient.Scope(
+		metrics.ShardDistributorAssignLoopScope,
+		metrics.NamespaceTag(p.namespaceCfg.Name),
+		metrics.NamespaceTypeTag(p.namespaceCfg.Type),
+	)
+
 	metricsLoopScope.AddCounter(metrics.ShardDistributorAssignLoopAttempts, 1)
 	defer func() {
 		if err != nil {
@@ -347,29 +357,6 @@ func (p *namespaceProcessor) rebalanceShardsImpl(ctx context.Context, metricsLoo
 	if err != nil {
 		return fmt.Errorf("get state: %w", err)
 	}
-
-	totalActiveShards := 0
-	totalShardPerExecutor := make(map[string]int)
-	shardIDs := make([]string, 0)
-
-	for executorID, assignedState := range namespaceState.ShardAssignments {
-		totalActiveShards += len(assignedState.AssignedShards)
-		totalShardPerExecutor[executorID] = len(assignedState.AssignedShards)
-		for shardID := range assignedState.AssignedShards {
-			shardIDs = append(shardIDs, shardID)
-		}
-	}
-	sort.Strings(shardIDs)
-
-	// Use the leader guard for the assign and delete operation.
-	p.logger.Info("Fetched active shards", tag.Dynamic("totalActiveShards", totalActiveShards))
-	p.logger.Info("Fetched shard distribution per executor", tag.Dynamic("shardCountPerExecutor", totalShardPerExecutor))
-	p.logger.Info("Fetched shards assigned", tag.Dynamic("shardIDs", shardIDs))
-
-	slices.Compact(shardIDs)
-	p.logger.Info("Fetched total deduplicated shard assigned", tag.Dynamic("total", len(shardIDs)))
-	p.logger.Info("Fetched deduplicated shard assigned", tag.Dynamic("shardIDs", shardIDs))
-	p.logger.Info("Fetched namespace state", tag.Dynamic("namespaceState", namespaceState))
 
 	if namespaceState.GlobalRevision <= p.lastAppliedRevision {
 		p.logger.Debug("No changes detected. Skipping rebalance.")
@@ -408,29 +395,6 @@ func (p *namespaceProcessor) rebalanceShardsImpl(ctx context.Context, metricsLoo
 	p.addAssignmentsToNamespaceState(namespaceState, currentAssignments)
 	p.logger.Info("Applying new shard distribution.")
 
-	totalActiveShards = 0
-	totalShardPerExecutor = make(map[string]int)
-	shardIDs = make([]string, 0)
-
-	for executorID, assignedState := range namespaceState.ShardAssignments {
-		totalActiveShards += len(assignedState.AssignedShards)
-		totalShardPerExecutor[executorID] = len(assignedState.AssignedShards)
-		for shardID := range assignedState.AssignedShards {
-			shardIDs = append(shardIDs, shardID)
-		}
-	}
-	sort.Strings(shardIDs)
-
-	// Use the leader guard for the assign and delete operation.
-	p.logger.Info("Rebalanced total active shards", tag.Dynamic("totalActiveShards", totalActiveShards))
-	p.logger.Info("Rebalanced shard distribution per executor", tag.Dynamic("shardCountPerExecutor", totalShardPerExecutor))
-	p.logger.Debug("Rebalanced shards assigned", tag.Dynamic("shardIDs", shardIDs))
-
-	slices.Compact(shardIDs)
-	p.logger.Debug("Rebalanced total deduplicated shard assigned", tag.Dynamic("total", len(shardIDs)))
-	p.logger.Debug("Rebalanced deduplicated shard assigned", tag.Dynamic("shardIDs", shardIDs))
-	p.logger.Info("Rebalanced namespace state", tag.Dynamic("namespaceState", namespaceState))
-
 	err = p.shardStore.AssignShards(ctx, p.namespaceCfg.Name, store.AssignShardsRequest{
 		NewState:          namespaceState,
 		ExecutorsToDelete: staleExecutors,
@@ -439,11 +403,12 @@ func (p *namespaceProcessor) rebalanceShardsImpl(ctx context.Context, metricsLoo
 		return fmt.Errorf("assign shards: %w", err)
 	}
 
-	metricsLoopScope.Tagged(
-		metrics.NamespaceTag(p.namespaceCfg.Name),
-		metrics.NamespaceTypeTag(p.namespaceCfg.Type),
-	).UpdateGauge(metrics.ShardDistributorActiveShards, float64(totalActiveShards))
+	totalActiveShards := 0
+	for _, assignedState := range namespaceState.ShardAssignments {
+		totalActiveShards += len(assignedState.AssignedShards)
+	}
 
+	metricsLoopScope.UpdateGauge(metrics.ShardDistributorActiveShards, float64(totalActiveShards))
 	return nil
 }
 

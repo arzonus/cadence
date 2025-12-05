@@ -112,6 +112,7 @@ func (e *elector) Run(ctx context.Context) <-chan bool {
 		defer close(leaderCh)
 		defer cancelRun() // Ensure child context is canceled on exit
 		defer func() {
+			e.logger.Info("Leader election process exiting")
 			if r := recover(); r != nil {
 				e.logger.Error("Panic in election process", tag.Value(r))
 			}
