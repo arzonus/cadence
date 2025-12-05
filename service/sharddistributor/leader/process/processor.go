@@ -319,6 +319,11 @@ func (p *namespaceProcessor) identifyStaleShardStats(namespaceState *store.Names
 
 // rebalanceShards is the core logic for distributing shards among active executors.
 func (p *namespaceProcessor) rebalanceShards(ctx context.Context) (err error) {
+	// ensure we have a timeout for the rebalance operation
+	// to not have it stuck indefinitely
+	ctx, cancel := context.WithTimeout(ctx, p.cfg.Period)
+	defer cancel()
+
 	metricsLoopScope := p.metricsClient.Scope(metrics.ShardDistributorAssignLoopScope)
 	metricsLoopScope.AddCounter(metrics.ShardDistributorAssignLoopAttempts, 1)
 	defer func() {
@@ -357,7 +362,7 @@ func (p *namespaceProcessor) rebalanceShardsImpl(ctx context.Context, metricsLoo
 
 	activeExecutors := p.getActiveExecutors(namespaceState, staleExecutors)
 	if len(activeExecutors) == 0 {
-		p.logger.Warn("No active executors found. Cannot assign shards.")
+		p.logger.Info("No active executors found. Cannot assign shards.")
 		return nil
 	}
 	p.logger.Info("Active executors", tag.ShardExecutors(activeExecutors))
@@ -373,7 +378,7 @@ func (p *namespaceProcessor) rebalanceShardsImpl(ctx context.Context, metricsLoo
 
 	distributionChanged := len(deletedShards) > 0 || len(staleExecutors) > 0 || assignedToEmptyExecutors || updatedAssignments
 	if !distributionChanged {
-		p.logger.Debug("No changes to distribution detected. Skipping rebalance.")
+		p.logger.Info("No changes to distribution detected. Skipping rebalance.")
 		return nil
 	}
 
