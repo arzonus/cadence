@@ -52,7 +52,7 @@ func (p *ShardProcessor) GetShardReport() executorclient.ShardReport {
 func (p *ShardProcessor) Start(ctx context.Context) error {
 	p.logger.Info("Starting shard processor", zap.String("shardID", p.shardID))
 	p.goRoutineWg.Add(1)
-	go p.process(ctx)
+	go p.process(context.Background())
 	return nil
 }
 
