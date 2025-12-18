@@ -7,31 +7,24 @@ package ratelimited
 import (
 	"context"
 
-	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/quotas"
 )
 
 // ratelimitedShardManager implements persistence.ShardManager interface instrumented with rate limiter.
 type ratelimitedShardManager struct {
-	wrapped       persistence.ShardManager
-	rateLimiter   quotas.Limiter
-	metricsClient metrics.Client
-	datastoreName string
+	wrapped     persistence.ShardManager
+	rateLimiter quotas.Limiter
 }
 
 // NewShardManager creates a new instance of ShardManager with ratelimiter.
 func NewShardManager(
 	wrapped persistence.ShardManager,
 	rateLimiter quotas.Limiter,
-	metricsClient metrics.Client,
-	datastoreName string,
 ) persistence.ShardManager {
 	return &ratelimitedShardManager{
-		wrapped:       wrapped,
-		rateLimiter:   rateLimiter,
-		metricsClient: metricsClient,
-		datastoreName: datastoreName,
+		wrapped:     wrapped,
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -41,10 +34,6 @@ func (c *ratelimitedShardManager) Close() {
 }
 
 func (c *ratelimitedShardManager) CreateShard(ctx context.Context, request *persistence.CreateShardRequest) (err error) {
-	if c.metricsClient != nil {
-		scope := c.metricsClient.Scope(metrics.PersistenceCreateShardScope, metrics.DatastoreTag(c.datastoreName))
-		scope.UpdateGauge(metrics.PersistenceQuota, float64(c.rateLimiter.Limit()))
-	}
 	if ok := c.rateLimiter.Allow(); !ok {
 		err = ErrPersistenceLimitExceeded
 		return
@@ -57,10 +46,6 @@ func (c *ratelimitedShardManager) GetName() (s1 string) {
 }
 
 func (c *ratelimitedShardManager) GetShard(ctx context.Context, request *persistence.GetShardRequest) (gp1 *persistence.GetShardResponse, err error) {
-	if c.metricsClient != nil {
-		scope := c.metricsClient.Scope(metrics.PersistenceCreateShardScope, metrics.DatastoreTag(c.datastoreName))
-		scope.UpdateGauge(metrics.PersistenceQuota, float64(c.rateLimiter.Limit()))
-	}
 	if ok := c.rateLimiter.Allow(); !ok {
 		err = ErrPersistenceLimitExceeded
 		return
@@ -69,10 +54,6 @@ func (c *ratelimitedShardManager) GetShard(ctx context.Context, request *persist
 }
 
 func (c *ratelimitedShardManager) UpdateShard(ctx context.Context, request *persistence.UpdateShardRequest) (err error) {
-	if c.metricsClient != nil {
-		scope := c.metricsClient.Scope(metrics.PersistenceCreateShardScope, metrics.DatastoreTag(c.datastoreName))
-		scope.UpdateGauge(metrics.PersistenceQuota, float64(c.rateLimiter.Limit()))
-	}
 	if ok := c.rateLimiter.Allow(); !ok {
 		err = ErrPersistenceLimitExceeded
 		return
