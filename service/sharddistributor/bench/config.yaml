@@ -1,0 +1,28 @@
+# ShardDistributor connection
+shardDistributor:
+  serviceName: "shard-distributor"
+  address: "localhost:7600"
+  timeout: 5s
+
+# Load test configuration
+load:
+  namespaces:
+    - name: "test-fixed-namespace"
+      type: "fixed"
+      shardCount: 32
+      numSpectators: 50
+      numExecutors: 25
+      executorReassignmentPercentage: 10.0
+
+    - name: "test-ephemeral-namespace"
+      type: "ephemeral"
+      numSpectators: 50
+      numExecutors: 25
+      executorReassignmentPercentage: 10.0
+      ephemeralShardCreationRPS: 10.0
+      ephemeralShardLifetime: 60s
+
+# Logging configuration
+logging:
+  level: "info"
+
