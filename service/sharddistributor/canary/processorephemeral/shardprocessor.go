@@ -22,7 +22,7 @@ const (
 	// This means the average time to complete a shard is 60 seconds.
 	// It also means we in average have 60 shards per instance running at any given time.
 	stopInterval             = 1 * time.Second
-	shardProcessorDoneChance = 60
+	shardProcessorDoneChance = 60 * 30 * 1.5
 )
 
 // NewShardProcessor creates a new ShardProcessor.
