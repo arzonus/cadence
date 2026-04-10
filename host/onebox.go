@@ -155,6 +155,7 @@ type (
 
 	HistorySimulationConfig struct {
 		NumWorkflows int
+		TestDuration time.Duration
 		// WorkflowDeletionJitterRange defines the duration in minutes for workflow close tasks jittering
 		// defaults to 0 to remove jittering
 		WorkflowDeletionJitterRange int

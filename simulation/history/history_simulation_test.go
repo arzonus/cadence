@@ -148,11 +148,26 @@ func (s *HistorySimulationSuite) TearDownSuite() {
 	s.TearDownBaseSuite()
 }
 
+func (s *HistorySimulationSuite) getConfig() host.HistorySimulationConfig {
+	cfg := s.TestClusterConfig.HistoryConfig.SimulationConfig
+
+	if cfg.NumWorkflows <= 0 {
+		cfg.NumWorkflows = 100
+	}
+	if cfg.TestDuration <= 0 {
+		cfg.TestDuration = 5 * time.Minute
+	}
+
+	return cfg
+}
+
 func (s *HistorySimulationSuite) TestHistorySimulation() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	cfg := s.getConfig()
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.TestDuration)
 	defer cancel()
 	var runs []client.WorkflowRun
-	for i := 0; i < 100; i++ {
+	for i := 0; i < cfg.NumWorkflows; i++ {
 		// set a short timeout so that timer tasks can be executed before complete
 		workflowOptions := client.StartWorkflowOptions{
 			TaskList:                        s.taskList,
