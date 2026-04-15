@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -148,14 +149,40 @@ func (s *HistorySimulationSuite) TearDownSuite() {
 }
 
 func (s *HistorySimulationSuite) TestHistorySimulation() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	simCfg := s.TestClusterConfig.HistoryConfig.SimulationConfig
+
+	testTimeout := 5 * time.Minute
+	if simCfg.TestTimeoutSeconds > 0 {
+		testTimeout = time.Duration(simCfg.TestTimeoutSeconds) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
+
+	chaosConfig := s.TestClusterConfig.HistoryConfig.ChaosConfig
+	numHosts := s.TestClusterConfig.HistoryConfig.NumHistoryHosts
+	cadence := s.TestCluster.GetCadence()
+
+	chaosCtx, chaosCancel := context.WithCancel(ctx)
+	var chaosWg sync.WaitGroup
+	cm := host.NewHistoryChaosMonkey(cadence, chaosConfig, numHosts, s.Logger)
+	chaosWg.Add(1)
+	go func() { defer chaosWg.Done(); cm.Run(chaosCtx) }()
+
+	// Start workflows. Use a long execution timeout so chaos-induced shard
+	// movement does not cause workflows to time out before recovery completes.
 	var runs []client.WorkflowRun
-	for i := 0; i < 100; i++ {
-		// set a short timeout so that timer tasks can be executed before complete
+	numWorkflows := 100
+	if simCfg.NumWorkflows > 0 {
+		numWorkflows = simCfg.NumWorkflows
+	}
+	wfExecTimeout := 120 * time.Second
+	if simCfg.WorkflowExecutionTimeoutSeconds > 0 {
+		wfExecTimeout = time.Duration(simCfg.WorkflowExecutionTimeoutSeconds) * time.Second
+	}
+	for i := 0; i < numWorkflows; i++ {
 		workflowOptions := client.StartWorkflowOptions{
 			TaskList:                        s.taskList,
-			ExecutionStartToCloseTimeout:    120 * time.Second,
+			ExecutionStartToCloseTimeout:    wfExecTimeout,
 			DecisionTaskStartToCloseTimeout: 5 * time.Second,
 		}
 		we, err := s.wfClient.ExecuteWorkflow(ctx, workflowOptions, workflow.NoopWorkflow)
@@ -166,9 +193,40 @@ func (s *HistorySimulationSuite) TestHistorySimulation() {
 		s.True(we.GetRunID() != "")
 		s.Logger.Info("successfully start a workflow", tag.WorkflowID(we.GetID()), tag.WorkflowRunID(we.GetRunID()))
 		runs = append(runs, we)
+		if simCfg.WorkflowStartDelayMs > 0 {
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Duration(simCfg.WorkflowStartDelayMs) * time.Millisecond):
+			}
+		}
 	}
+
+	// If a minimum simulation duration is configured, let chaos run for at least
+	// that long before waiting for workflow results. This allows scenarios where
+	// workflows complete quickly (e.g. NoopWorkflow) to still exercise sustained
+	// shard movement over a meaningful window.
+	if simCfg.MinSimulationDurationSeconds > 0 {
+		minDur := time.Duration(simCfg.MinSimulationDurationSeconds) * time.Second
+		select {
+		case <-ctx.Done():
+		case <-time.After(minDur):
+		}
+	}
+
+	// Wait for all workflows to complete. Chaos runs in the background during
+	// this time, exercising shard movement while workflows are in flight.
 	for _, we := range runs {
 		s.NoError(we.Get(ctx, nil))
 	}
-	time.Sleep(120 * time.Second)
+
+	// Stop chaos and wait for the goroutine to finish (which restarts any
+	// stopped hosts). Then sleep to let shard re-acquisition settle and
+	// Prometheus scrape final metrics.
+	chaosCancel()
+	chaosWg.Wait()
+	endSleep := 120 * time.Second
+	if simCfg.EndSleepSeconds > 0 {
+		endSleep = time.Duration(simCfg.EndSleepSeconds) * time.Second
+	}
+	time.Sleep(endSleep)
 }

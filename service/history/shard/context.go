@@ -1677,7 +1677,7 @@ func (s *contextImpl) getEventsFromWorkflowSnapshot(snapshot *persistence.Workfl
 		for _, task := range tasks {
 			events = append(events, simulation.E{
 				EventName:  simulation.EventNameCreateHistoryTask,
-				Host:       s.config.HostName,
+				Host:       s.GetHostInfo().Identity(),
 				ShardID:    s.shardID,
 				DomainID:   task.GetDomainID(),
 				WorkflowID: task.GetWorkflowID(),
@@ -1702,7 +1702,7 @@ func (s *contextImpl) getEventsFromWorkflowMutation(mutation *persistence.Workfl
 		for _, task := range tasks {
 			events = append(events, simulation.E{
 				EventName:  simulation.EventNameCreateHistoryTask,
-				Host:       s.config.HostName,
+				Host:       s.GetHostInfo().Identity(),
 				ShardID:    s.shardID,
 				DomainID:   task.GetDomainID(),
 				WorkflowID: task.GetWorkflowID(),
