@@ -154,6 +154,7 @@ type (
 	}
 
 	HistorySimulationConfig struct {
+		// NumWorkflows is how many workflows the test starts in total. Defaults to 100.
 		NumWorkflows int
 		// WorkflowDeletionJitterRange defines the duration in minutes for workflow close tasks jittering
 		// defaults to 0 to remove jittering
@@ -162,6 +163,19 @@ type (
 		EnableTransferQueueV2 bool
 		// EnableTimerQueueV2 enables queue v2 framework for timer queue
 		EnableTimerQueueV2 bool
+
+		// SleepBetweenWorkflowStarts is how long the test waits between starting each workflow.
+		// A short gap keeps the frontend from getting hit with a burst on startup. Defaults to 0.
+		SleepBetweenWorkflowStarts time.Duration
+
+		// Timeout is the context deadline the test uses when waiting for all workflows to complete.
+		// Must be less than the go test -timeout ceiling (1800s in docker-compose). Defaults to 5 minutes.
+		Timeout time.Duration
+
+		// NumWorkflowSleeps is how many workflow.Sleep calls each workflow makes.
+		// Each sleep becomes a timer task, so this is the main knob for timer queue load
+		// without changing the number of workflows. Defaults to 0.
+		NumWorkflowSleeps int
 	}
 
 	MatchingConfig struct {
