@@ -31,6 +31,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
 	"github.com/uber/cadence/client/history"
@@ -66,6 +67,7 @@ func newMockManagerWithTaskListID(ctrl *gomock.Controller, id *tasklist.Identifi
 }
 
 func TestGetTaskListsByDomain(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	testCases := []struct {
 		name           string
 		mockSetup      func(*cache.MockDomainCache, map[tasklist.Identifier]*tasklist.MockManager, map[tasklist.Identifier]*tasklist.MockManager)
