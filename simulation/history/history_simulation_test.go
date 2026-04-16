@@ -182,4 +182,10 @@ func (s *HistorySimulationSuite) TestHistorySimulation() {
 	for _, we := range runs {
 		s.NoError(we.Get(ctx, nil))
 	}
+
+	sleepAfter := simCfg.SleepAfterAllWorkflows
+	if sleepAfter == 0 {
+		sleepAfter = 120 * time.Second
+	}
+	time.Sleep(sleepAfter)
 }

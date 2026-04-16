@@ -176,6 +176,11 @@ type (
 		// Each sleep becomes a timer task, so this is the main knob for timer queue load
 		// without changing the number of workflows. Defaults to 0.
 		NumWorkflowSleeps int
+
+		// SleepAfterAllWorkflows is how long the test waits after all workflows complete.
+		// This allows pending timer tasks (e.g. workflow timeout timers) to be processed
+		// before the simulation ends. Defaults to 120 seconds.
+		SleepAfterAllWorkflows time.Duration
 	}
 
 	MatchingConfig struct {
