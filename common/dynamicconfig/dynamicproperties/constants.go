@@ -1108,6 +1108,12 @@ const (
 	// Default value: 500*1024
 	// Allowed filters: N/A
 	TimerProcessorHistoryArchivalSizeLimit
+	// TimerProcessorCacheMaxSize is the hard cap on cached task count
+	// KeyName: history.timerProcessorCacheMaxSize
+	// Value type: Int
+	// Default value: 1000
+	// Allowed filters: N/A
+	TimerProcessorCacheMaxSize
 
 	// TransferTaskBatchSize is batch size for transferQueueProcessor
 	// KeyName: history.transferTaskBatchSize
@@ -2068,11 +2074,12 @@ const (
 	// Default value: true
 	// Allowed filters: N/A
 	EnableBatcher
-	// EnableScheduler decides whether to start the scheduler worker for cron-based scheduling
+	// EnableScheduler decides whether to start the scheduler worker for cron-based scheduling.
+	// Can be filtered by domain to enable/disable per domain.
 	// KeyName: worker.enableScheduler
 	// Value type: Bool
-	// Default value: false
-	// Allowed filters: N/A
+	// Default value: true
+	// Allowed filters: DomainName
 	EnableScheduler
 	// EnableParentClosePolicyWorker decides whether or not enable system workers for processing parent close policy task
 	// KeyName: system.enableParentClosePolicyWorker
@@ -2333,6 +2340,12 @@ const (
 	// Default value: false
 	// Allowed filters: ShardID
 	EnableTimerQueueV2PendingTaskCountAlert
+	// TimerProcessorEnableCachedScheduledQueue enables the cached scheduled queue for timer tasks
+	// KeyName: history.timerProcessorEnableCachedScheduledQueue
+	// Value type: Bool
+	// Default value: false
+	// Allowed filters: N/A
+	TimerProcessorEnableCachedScheduledQueue
 
 	// EnableActiveClusterSelectionPolicyInStartWorkflow is to enable active cluster selection policy in start workflow requests for a domain
 	// KeyName: frontend.enableActiveClusterSelectionPolicyInStartWorkflow
@@ -2701,8 +2714,6 @@ const (
 	//
 	// "invalid" invalid mode for the migration, not expected to be used
 	// "local_pass" the executor library is integrated but no external call to the SD happening
-	// "local_pass_shadow" heartbeat calls to the SD to update the sharding state in SD
-	// "distributed_pass" the local sharding mechanism is sent to SD, returned by SD and applied in the onboarded service
 	// "onboarded" the sharding logic in SD is used
 	//
 	// KeyName: shardDistributor.migrationMode
@@ -2722,6 +2733,20 @@ const (
 	// Default value: "naive"
 	// Allowed filters: namespace
 	ShardDistributorLoadBalancingMode
+
+	// HistoryTaskDeadLetterQueueMode is the key to enable history task dead letter queue
+	// KeyName: history.historyTaskDeadLetterQueueMode
+	// Value type: string ["disabled","shadow","enabled"]
+	// Default value: "disabled"
+	// Allowed filters: domainName
+	HistoryTaskDeadLetterQueueMode
+
+	// TimerProcessorCachedQueueReaderMode controls cached queue reader mode: disabled/shadow/enabled
+	// KeyName: history.timerProcessorCachedQueueReaderMode
+	// Value type: string enum: "disabled", "shadow", "enabled"
+	// Default value: "disabled"
+	// Allowed filters: ShardID
+	TimerProcessorCachedQueueReaderMode
 
 	// LastStringKey must be the last one in this const group
 	LastStringKey
@@ -3006,6 +3031,45 @@ const (
 	// Default value: 1s (1*time.Second)
 	// Allowed filters: N/A
 	TimerProcessorMaxTimeShift
+	// TimerProcessorCacheMaxLookAheadWindow is the prefetch ceiling relative to now
+	// KeyName: history.timerProcessorCacheMaxLookAheadWindow
+	// Value type: Duration
+	// Default value: 5m (5*time.Minute)
+	// Allowed filters: N/A
+	TimerProcessorCacheMaxLookAheadWindow
+	// TimerProcessorCachePrefetchTriggerWindow triggers prefetch when this close to upperBound
+	// KeyName: history.timerProcessorCachePrefetchTriggerWindow
+	// Value type: Duration
+	// Default value: 30s (30*time.Second)
+	// Allowed filters: N/A
+	TimerProcessorCachePrefetchTriggerWindow
+	// TimerProcessorCacheWarmupGracePeriod is the grace period after Start before Inject accepts tasks
+	// KeyName: history.timerProcessorCacheWarmupGracePeriod
+	// Value type: Duration
+	// Default value: 30s (30*time.Second)
+	// Allowed filters: N/A
+	TimerProcessorCacheWarmupGracePeriod
+	// TimerProcessorCacheEvictionSafeWindow is the time-based eviction window
+	// KeyName: history.timerProcessorCacheEvictionSafeWindow
+	// Value type: Duration
+	// Default value: 10s (10*time.Second)
+	// Allowed filters: N/A
+	TimerProcessorCacheEvictionSafeWindow
+	// TimerProcessorCacheMinPrefetchInterval is the minimum time between consecutive
+	// prefetch attempts. It prevents the prefetch loop from hammering the database
+	// on pathological cases (e.g. cache resets or persistent gap detection).
+	// KeyName: history.timerProcessorCacheMinPrefetchInterval
+	// Value type: Duration
+	// Default value: 1s (1*time.Second)
+	// Allowed filters: N/A
+	TimerProcessorCacheMinPrefetchInterval
+	// TimerProcessorCacheTimeEvictionInterval is how often the time-based eviction
+	// loop fires to advance inclusiveLowerBound by now - EvictionSafeWindow.
+	// KeyName: history.timerProcessorCacheTimeEvictionInterval
+	// Value type: Duration
+	// Default value: 1s (1*time.Second)
+	// Allowed filters: N/A
+	TimerProcessorCacheTimeEvictionInterval
 	// TransferProcessorFailoverMaxStartJitterInterval is the max jitter interval for starting transfer
 	// failover queue processing. The actual jitter interval used will be a random duration between
 	// 0 and the max interval so that timer failover queue across different shards won't start at
@@ -3268,6 +3332,13 @@ const (
 	// Default value: 365 days (1 year)
 	// Allowed filters: DomainID
 	DomainAuditLogTTL
+
+	// HistoryTaskDLQProcessorInterval is the interval for background processing of the History Task DLQ
+	// KeyName: history.historyTaskDLQProcessorInterval
+	// Value type: Duration
+	// Default value: 30m (30 * time.Minute)
+	// Allowed filters: ShardID
+	HistoryTaskDLQProcessorInterval
 
 	// LastDurationKey must be the last one in this const group
 	LastDurationKey
@@ -4017,6 +4088,11 @@ var IntKeys = map[IntKey]DynamicInt{
 		KeyName:      "history.timerProcessorHistoryArchivalSizeLimit",
 		Description:  "TimerProcessorHistoryArchivalSizeLimit is the max history size for inline archival",
 		DefaultValue: 500 * 1024,
+	},
+	TimerProcessorCacheMaxSize: {
+		KeyName:      "history.timerProcessorCacheMaxSize",
+		Description:  "TimerProcessorCacheMaxSize is the hard cap on cached task count",
+		DefaultValue: 1000,
 	},
 	TransferTaskBatchSize: {
 		KeyName:      "history.transferTaskBatchSize",
@@ -4856,8 +4932,9 @@ var BoolKeys = map[BoolKey]DynamicBool{
 	},
 	EnableScheduler: {
 		KeyName:      "worker.enableScheduler",
-		Description:  "EnableScheduler decides whether to start the scheduler worker for cron-based scheduling",
-		DefaultValue: false,
+		Filters:      []Filter{DomainName},
+		Description:  "EnableScheduler decides whether to start the scheduler worker for cron-based scheduling. Can be filtered by domain to enable/disable per domain.",
+		DefaultValue: true,
 	},
 	EnableParentClosePolicyWorker: {
 		KeyName:      "system.enableParentClosePolicyWorker",
@@ -5077,6 +5154,11 @@ var BoolKeys = map[BoolKey]DynamicBool{
 		KeyName:      "history.enableTimerQueueV2PendingTaskCountAlert",
 		Description:  "EnableTimerQueueV2PendingTaskCountAlert is to enable timer queue v2 pending task count alert",
 		Filters:      []Filter{ShardID},
+		DefaultValue: false,
+	},
+	TimerProcessorEnableCachedScheduledQueue: {
+		KeyName:      "history.timerProcessorEnableCachedScheduledQueue",
+		Description:  "TimerProcessorEnableCachedScheduledQueue enables the cached scheduled queue for timer tasks",
 		DefaultValue: false,
 	},
 	EnableActiveClusterSelectionPolicyInStartWorkflow: {
@@ -5385,6 +5467,18 @@ var StringKeys = map[StringKey]DynamicString{
 		Description:  "ShardDistributorLoadBalancingMode is the load balancing mode for the shard distributor. Depending on the mode, the shard distributor will use different ways to distribute the shards",
 		DefaultValue: "naive",
 	},
+	HistoryTaskDeadLetterQueueMode: {
+		KeyName:      "history.historyTaskDeadLetterQueueMode",
+		Description:  "HistoryTaskDeadLetterQueueMode is the key to enable history task dead letter queue. When enabled, the history task will be sent to a dead letter queue if it fails to be processed after a certain number of retries.",
+		DefaultValue: "disabled", // available options: "disabled","shadow","enabled"
+		Filters:      []Filter{DomainName},
+	},
+	TimerProcessorCachedQueueReaderMode: {
+		KeyName:      "history.timerProcessorCachedQueueReaderMode",
+		Description:  "TimerProcessorCachedQueueReaderMode controls cached queue reader mode: disabled/shadow/enabled",
+		DefaultValue: "disabled",
+		Filters:      []Filter{ShardID},
+	},
 }
 
 var DurationKeys = map[DurationKey]DynamicDuration{
@@ -5650,6 +5744,36 @@ var DurationKeys = map[DurationKey]DynamicDuration{
 		Description:  "TimerProcessorMaxTimeShift is the max shift timer processor can have",
 		DefaultValue: time.Second,
 	},
+	TimerProcessorCacheMaxLookAheadWindow: {
+		KeyName:      "history.timerProcessorCacheMaxLookAheadWindow",
+		Description:  "TimerProcessorCacheMaxLookAheadWindow is the prefetch ceiling relative to now",
+		DefaultValue: time.Minute * 5,
+	},
+	TimerProcessorCachePrefetchTriggerWindow: {
+		KeyName:      "history.timerProcessorCachePrefetchTriggerWindow",
+		Description:  "TimerProcessorCachePrefetchTriggerWindow triggers prefetch when this close to upperBound",
+		DefaultValue: time.Second * 30,
+	},
+	TimerProcessorCacheWarmupGracePeriod: {
+		KeyName:      "history.timerProcessorCacheWarmupGracePeriod",
+		Description:  "TimerProcessorCacheWarmupGracePeriod is the grace period after Start before Inject accepts tasks",
+		DefaultValue: time.Second * 30,
+	},
+	TimerProcessorCacheEvictionSafeWindow: {
+		KeyName:      "history.timerProcessorCacheEvictionSafeWindow",
+		Description:  "TimerProcessorCacheEvictionSafeWindow is the time-based eviction window",
+		DefaultValue: time.Second * 10,
+	},
+	TimerProcessorCacheMinPrefetchInterval: {
+		KeyName:      "history.timerProcessorCacheMinPrefetchInterval",
+		Description:  "TimerProcessorCacheMinPrefetchInterval is the minimum time between consecutive prefetch attempts",
+		DefaultValue: time.Second,
+	},
+	TimerProcessorCacheTimeEvictionInterval: {
+		KeyName:      "history.timerProcessorCacheTimeEvictionInterval",
+		Description:  "TimerProcessorCacheTimeEvictionInterval is how often the time-based eviction loop fires",
+		DefaultValue: time.Second,
+	},
 	TransferProcessorFailoverMaxStartJitterInterval: {
 		KeyName:      "history.transferProcessorFailoverMaxStartJitterInterval",
 		Description:  "TransferProcessorFailoverMaxStartJitterInterval is the max jitter interval for starting transfer failover queue processing. The actual jitter interval used will be a random duration between 0 and the max interval so that timer failover queue across different shards won't start at the same time",
@@ -5888,6 +6012,12 @@ var DurationKeys = map[DurationKey]DynamicDuration{
 		Filters:      []Filter{DomainName},
 		Description:  "CorruptionRepairTimeout is the timeout for corruption repair operations",
 		DefaultValue: time.Second * 30,
+	},
+	HistoryTaskDLQProcessorInterval: {
+		KeyName:      "history.historyTaskDLQProcessorInterval",
+		Filters:      []Filter{ShardID},
+		Description:  "HistoryTaskDLQProcessorInterval is the interval for background processing of the History Task DLQ",
+		DefaultValue: time.Minute * 30,
 	},
 }
 
