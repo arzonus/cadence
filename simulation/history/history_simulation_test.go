@@ -147,29 +147,39 @@ func (s *HistorySimulationSuite) TearDownSuite() {
 	s.TearDownBaseSuite()
 }
 
+func (s *HistorySimulationSuite) getSimulationConfig() host.HistorySimulationConfig {
+	cfg := s.TestClusterConfig.HistoryConfig.SimulationConfig
+
+	if cfg.NumWorkflows == 0 {
+		cfg.NumWorkflows = 100
+	}
+
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 5 * time.Minute
+	}
+
+	if cfg.SleepAfterAllWorkflows == 0 {
+		cfg.SleepAfterAllWorkflows = 120 * time.Second
+	}
+
+	return cfg
+}
+
 func (s *HistorySimulationSuite) TestHistorySimulation() {
-	simCfg := s.TestClusterConfig.HistoryConfig.SimulationConfig
 
-	numWorkflows := simCfg.NumWorkflows
-	if numWorkflows == 0 {
-		numWorkflows = 100
-	}
-	timeout := simCfg.Timeout
-	if timeout == 0 {
-		timeout = 5 * time.Minute
-	}
+	cfg := s.getSimulationConfig()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 
 	var runs []client.WorkflowRun
-	for i := 0; i < numWorkflows; i++ {
+	for i := 0; i < cfg.NumWorkflows; i++ {
 		workflowOptions := client.StartWorkflowOptions{
 			TaskList:                        s.taskList,
 			ExecutionStartToCloseTimeout:    120 * time.Second,
 			DecisionTaskStartToCloseTimeout: 5 * time.Second,
 		}
-		we, err := s.wfClient.ExecuteWorkflow(ctx, workflowOptions, workflow.SimulationWorkflow, simCfg.NumWorkflowSleeps)
+		we, err := s.wfClient.ExecuteWorkflow(ctx, workflowOptions, workflow.SimulationWorkflow, cfg.NumWorkflowSleeps)
 		if err != nil {
 			s.Logger.Fatal("Start workflow with err", tag.Error(err))
 		}
@@ -177,15 +187,11 @@ func (s *HistorySimulationSuite) TestHistorySimulation() {
 		s.True(we.GetRunID() != "")
 		s.Logger.Info("successfully start a workflow", tag.WorkflowID(we.GetID()), tag.WorkflowRunID(we.GetRunID()))
 		runs = append(runs, we)
-		time.Sleep(simCfg.SleepBetweenWorkflowStarts)
+		time.Sleep(cfg.SleepBetweenWorkflowStarts)
 	}
 	for _, we := range runs {
 		s.NoError(we.Get(ctx, nil))
 	}
 
-	sleepAfter := simCfg.SleepAfterAllWorkflows
-	if sleepAfter == 0 {
-		sleepAfter = 120 * time.Second
-	}
-	time.Sleep(sleepAfter)
+	time.Sleep(cfg.SleepAfterAllWorkflows)
 }
