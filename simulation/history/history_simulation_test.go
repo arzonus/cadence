@@ -148,17 +148,28 @@ func (s *HistorySimulationSuite) TearDownSuite() {
 }
 
 func (s *HistorySimulationSuite) TestHistorySimulation() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	simCfg := s.TestClusterConfig.HistoryConfig.SimulationConfig
+
+	numWorkflows := simCfg.NumWorkflows
+	if numWorkflows == 0 {
+		numWorkflows = 100
+	}
+	timeout := simCfg.Timeout
+	if timeout == 0 {
+		timeout = 5 * time.Minute
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
 	var runs []client.WorkflowRun
-	for i := 0; i < 100; i++ {
-		// set a short timeout so that timer tasks can be executed before complete
+	for i := 0; i < numWorkflows; i++ {
 		workflowOptions := client.StartWorkflowOptions{
 			TaskList:                        s.taskList,
 			ExecutionStartToCloseTimeout:    120 * time.Second,
 			DecisionTaskStartToCloseTimeout: 5 * time.Second,
 		}
-		we, err := s.wfClient.ExecuteWorkflow(ctx, workflowOptions, workflow.NoopWorkflow)
+		we, err := s.wfClient.ExecuteWorkflow(ctx, workflowOptions, workflow.SimulationWorkflow, simCfg.NumWorkflowSleeps)
 		if err != nil {
 			s.Logger.Fatal("Start workflow with err", tag.Error(err))
 		}
@@ -166,9 +177,9 @@ func (s *HistorySimulationSuite) TestHistorySimulation() {
 		s.True(we.GetRunID() != "")
 		s.Logger.Info("successfully start a workflow", tag.WorkflowID(we.GetID()), tag.WorkflowRunID(we.GetRunID()))
 		runs = append(runs, we)
+		time.Sleep(simCfg.SleepBetweenWorkflowStarts)
 	}
 	for _, we := range runs {
 		s.NoError(we.Get(ctx, nil))
 	}
-	time.Sleep(120 * time.Second)
 }

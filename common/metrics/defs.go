@@ -2903,6 +2903,10 @@ const (
 	VirtualQueueCountGauge
 	VirtualQueuePausedGauge
 	VirtualQueueRunningGauge
+	CachedQueueHitsCounter
+	CachedQueueMissesCounter
+	CachedQueueSizeHistogram
+	CachedQueueMismatchCounter
 
 	TaskRequestsPerTaskList
 	TaskLatencyPerTaskListHistogram
@@ -3778,6 +3782,10 @@ var MetricDefs = map[ServiceIdx]map[MetricIdx]metricDefinition{
 		VirtualQueueCountGauge:                                       {metricName: "virtual_queue_count", metricType: Gauge},
 		VirtualQueuePausedGauge:                                      {metricName: "virtual_queue_paused", metricType: Gauge},
 		VirtualQueueRunningGauge:                                     {metricName: "virtual_queue_running", metricType: Gauge},
+		CachedQueueHitsCounter:                                       {metricName: "cached_queue_hits", metricType: Counter},
+		CachedQueueMissesCounter:                                     {metricName: "cached_queue_misses", metricType: Counter},
+		CachedQueueSizeHistogram:                                     {metricName: "cached_queue_size", metricType: Histogram},
+		CachedQueueMismatchCounter:                                   {metricName: "cached_queue_mismatch", metricType: Counter},
 	},
 	Matching: {
 		PollSuccessPerTaskListCounter:                           {metricName: "poll_success_per_tl", metricRollupName: "poll_success"},
