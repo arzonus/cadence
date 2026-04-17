@@ -24,13 +24,20 @@ package queuev2
 
 import (
 	"context"
+	"sync"
 
+	"github.com/uber/cadence/common/clock"
+	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	hcommon "github.com/uber/cadence/service/history/common"
 )
 
 type cachedScheduledQueue struct {
 	*scheduledQueue
-	reader CachedQueueReader
+	reader              CachedQueueReader
+	readLevelSyncCancel context.CancelFunc
+	readLevelSyncWg     sync.WaitGroup
+	readLevelInterval   dynamicproperties.DurationPropertyFn
+	clock               clock.TimeSource
 }
 
 func newCachedScheduledQueue(inner *scheduledQueue, reader CachedQueueReader) Queue {
@@ -44,7 +51,13 @@ func newCachedScheduledQueue(inner *scheduledQueue, reader CachedQueueReader) Qu
 		reader.UpdateReadLevel(inner.base.virtualQueueManager.GetMinReadLevel())
 	}
 
-	return &cachedScheduledQueue{scheduledQueue: inner, reader: reader}
+	config := inner.base.shard.GetConfig()
+	return &cachedScheduledQueue{
+		scheduledQueue:    inner,
+		reader:            reader,
+		readLevelInterval: config.TimerProcessorCacheReadLevelSyncInterval,
+		clock:             inner.base.timeSource,
+	}
 }
 
 func (q *cachedScheduledQueue) NotifyNewTask(clusterName string, info *hcommon.NotifyTaskInfo) {
@@ -55,9 +68,38 @@ func (q *cachedScheduledQueue) NotifyNewTask(clusterName string, info *hcommon.N
 func (q *cachedScheduledQueue) Start() {
 	q.reader.Start()
 	q.scheduledQueue.Start()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	q.readLevelSyncCancel = cancel
+	q.readLevelSyncWg.Add(1)
+	go q.readLevelSyncLoop(ctx)
 }
 
 func (q *cachedScheduledQueue) Stop() {
+	q.readLevelSyncCancel()
+	q.readLevelSyncWg.Wait()
+
 	q.scheduledQueue.Stop()
 	q.reader.Stop()
+}
+
+// readLevelSyncLoop periodically syncs the virtual queue manager's current read
+// level to the cache reader, evicting tasks the processor has already passed.
+// This runs more frequently than updateQueueStateFn (which is gated on DB writes)
+// so the cache lower bound stays close to actual processing progress.
+func (q *cachedScheduledQueue) readLevelSyncLoop(ctx context.Context) {
+	defer q.readLevelSyncWg.Done()
+
+	timer := q.clock.NewTimer(q.readLevelInterval())
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.Chan():
+			q.reader.UpdateReadLevel(q.base.virtualQueueManager.GetMinReadLevel())
+			timer.Reset(q.readLevelInterval())
+		}
+	}
 }
