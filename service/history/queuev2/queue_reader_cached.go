@@ -520,7 +520,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
 	)
-	q.updateInclusiveLowerBound(readLevel, "ack-level-update")
+	q.updateInclusiveLowerBound(readLevel, "read-level-update")
 }
 
 // Inject adds tasks within [inclusiveLowerBound, exclusiveUpperBound) to the
@@ -646,8 +646,9 @@ type findMismatchesInShadowResult struct {
 	// from the cache snapshot (after filtering benign eviction and inject races).
 	MissingFromCache []persistence.HistoryTaskKey
 	// ExtraInCache contains task keys present in the cache snapshot but absent
-	// from the DB response. These are benign (task independence means having extra
-	// tasks in cache causes no harm) and are tracked separately for observability.
+	// from the DB response. These are typically benign (Inject races, tasks
+	// written to cache before the DB read completes) but are still reported as
+	// mismatches for observability via shadowMismatch.extraInCache in the log.
 	ExtraInCache []persistence.HistoryTaskKey
 	// NextKeyMismatch is true when the cache and DB disagree on the next-page
 	// boundary key, meaning a subsequent GetTask would start at different points.
@@ -658,9 +659,6 @@ type findMismatchesInShadowResult struct {
 
 // reportShadowComparison logs the result of a shadow comparison and increments
 // the mismatch metric when HasMismatches is true.
-// ExtraInCache (tasks in cache but not in DB) is always logged for observability
-// but does not trigger the metric counter or Warn log — extra tasks are benign
-// due to task independence (Inject races; tasks written to cache before DB commits).
 func (q *cachedQueueReader) reportShadowComparison(
 	result findMismatchesInShadowResult,
 	cacheResp *GetTaskResponse,
@@ -670,7 +668,6 @@ func (q *cachedQueueReader) reportShadowComparison(
 	comparisonTags := append(logTags,
 		tag.Dynamic("dbTaskCount", len(dbResp.Tasks)),
 		tag.Dynamic("cacheTaskCount", len(cacheResp.Tasks)),
-		tag.Dynamic("extraInCache", result.ExtraInCache),
 	)
 	if !result.HasMismatches {
 		q.logger.Debug("shadow comparison matched", comparisonTags...)
@@ -679,14 +676,15 @@ func (q *cachedQueueReader) reportShadowComparison(
 
 	q.metrics.IncCounter(metrics.CachedQueueMismatchCounter)
 	mismatchTags := append(comparisonTags,
-		tag.Dynamic("missingFromCache", result.MissingFromCache),
-		tag.Dynamic("nextKeyMismatch", result.NextKeyMismatch),
+		tag.Dynamic("shadowMismatch.missingFromCache", result.MissingFromCache),
+		tag.Dynamic("shadowMismatch.extraInCache", result.ExtraInCache),
+		tag.Dynamic("shadowMismatch.nextKeyMismatch", result.NextKeyMismatch),
 	)
 	if cacheResp.Progress != nil {
-		mismatchTags = append(mismatchTags, tag.Dynamic("cacheNextKey", cacheResp.Progress.NextTaskKey))
+		mismatchTags = append(mismatchTags, tag.Dynamic("shadowMismatch.cacheNextKey", cacheResp.Progress.NextTaskKey))
 	}
 	if dbResp.Progress != nil {
-		mismatchTags = append(mismatchTags, tag.Dynamic("dbNextKey", dbResp.Progress.NextTaskKey))
+		mismatchTags = append(mismatchTags, tag.Dynamic("shadowMismatch.dbNextKey", dbResp.Progress.NextTaskKey))
 	}
 	q.logger.Warn("shadow comparison mismatch", mismatchTags...)
 }
@@ -758,8 +756,9 @@ func findMismatchesInShadow(
 		result.NextKeyMismatch = !snapshotResp.Progress.NextTaskKey.Equal(dbResp.Progress.NextTaskKey)
 	}
 
-	// HasMismatches is true for actionable divergences; ExtraInCache is informational only.
-	result.HasMismatches = len(result.MissingFromCache) > 0 || result.NextKeyMismatch
+	// HasMismatches is true when any of the above fields indicate divergence,
+	// including ExtraInCache which is benign but still a mismatch to be observed.
+	result.HasMismatches = len(result.MissingFromCache) > 0 || len(result.ExtraInCache) > 0 || result.NextKeyMismatch
 	return result
 }
 
@@ -769,6 +768,10 @@ func findMismatchesInShadow(
 func (q *cachedQueueReader) LookAHead(ctx context.Context, req *LookAHeadRequest) (*LookAHeadResponse, error) {
 	if q.isDisabled() || q.isShadow() {
 		q.logger.Debug("look-ahead delegating to base, disabled or shadow mode")
+		return q.base.LookAHead(ctx, req)
+	}
+	if q.isInWarmup() {
+		q.logger.Debug("look-ahead delegating to base, cache in warmup")
 		return q.base.LookAHead(ctx, req)
 	}
 
