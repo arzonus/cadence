@@ -193,7 +193,7 @@ func TestCachedQueueReader_UpdateInclusiveLowerBound(t *testing.T) {
 			}
 
 			r.mu.Lock()
-			r.updateInclusiveLowerBound(tc.newKey)
+			r.updateInclusiveLowerBound(tc.newKey, "test")
 			r.mu.Unlock()
 
 			assert.Equal(t, tc.wantLowerBound, r.inclusiveLowerBound)
@@ -1103,6 +1103,7 @@ func TestCachedQueueReader_GetTask_Enabled(t *testing.T) {
 			r := newCachedQueueReaderWithOptions(base, queue, opts, ts, testlogger.New(t), scope)
 			r.inclusiveLowerBound = tc.lowerBound
 			r.exclusiveUpperBound = tc.upperBound
+			r.injectAllowedAfter = time.Time{} // skip warmup for unit tests
 
 			if tc.seedTasks != nil {
 				queue.PutTasks(tc.seedTasks)
@@ -1984,13 +1985,13 @@ func TestFindMismatchesInShadow(t *testing.T) {
 			wantHasMismatches:    true,
 		},
 		{
-			name:               "cache task missing from DB",
+			name:               "cache task missing from DB — informational only, not a mismatch",
 			snapshotResp:       resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			dbResp:             resp([]persistence.Task{task(10, 1)}, 30),
 			preFetchLowerBound: preFetchLower,
 			liveResp:           resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			wantExtraInCache:   []int64{2},
-			wantHasMismatches:  true,
+			wantHasMismatches:  false, // ExtraInCache alone is benign — does not set HasMismatches
 		},
 		{
 			name:               "benign inject race — task not in snapshot but in live",
@@ -2137,6 +2138,7 @@ func TestCachedQueueReader_GetTask_Shadow(t *testing.T) {
 			r := newCachedQueueReaderWithOptions(base, queue, opts, ts, testlogger.New(t), scope)
 			r.inclusiveLowerBound = tc.lowerBound
 			r.exclusiveUpperBound = tc.upperBound
+			r.injectAllowedAfter = time.Time{} // skip warmup for unit tests
 
 			if tc.seedTasks != nil {
 				queue.PutTasks(tc.seedTasks)
