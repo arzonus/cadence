@@ -387,38 +387,24 @@ func (q *cachedQueueReader) prefetch() error {
 		return fmt.Errorf("gap detected: upper bound changed during fetch")
 	}
 
-	prevUpper := q.exclusiveUpperBound
-	q.putTasks(resp.Tasks)
-
-	// putTasks calls RTrimBySize, which calls updateExclusiveUpperBound when a
-	// trim occurs. Any change to exclusiveUpperBound here means the cache no
-	// longer holds a contiguous prefix up to NextTaskKey or exclusiveMaxKey, so
-	// re-advancing would create false coverage. Use Equal (not Less) to catch
-	// both the shrink case and the case where the trim kept some DB tasks,
-	// raising the bound above prevUpper but below the target ceiling.
-	if !q.exclusiveUpperBound.Equal(prevUpper) {
-		q.logger.Debug("prefetch skipped upper-bound advance: cache trimmed",
-			tag.Dynamic("trimmedUpper", q.exclusiveUpperBound),
-			tag.Dynamic("prevUpper", prevUpper),
-		)
+	// If a trim occurred, putTasks already updated the upper bound correctly.
+	// Re-advancing would create false coverage.
+	if q.putTasks(resp.Tasks) {
 		return nil
 	}
 
-	// On a full page the DB likely has more tasks, so only advance to the
-	// next task key — the following prefetch picks up from there. On a partial
-	// page we've seen everything in the range; advance to the ceiling.
-	if len(resp.Tasks) < pageSize {
-		if q.exclusiveUpperBound.Less(exclusiveMaxKey) {
-			q.updateExclusiveUpperBound(exclusiveMaxKey, "prefetch-partial-page")
-		}
-	} else {
-		if q.exclusiveUpperBound.Less(resp.Progress.NextTaskKey) {
-			q.updateExclusiveUpperBound(resp.Progress.NextTaskKey, "prefetch-full-page")
-		}
+	// No trim: advance to the appropriate target.
+	// Partial page → we've seen the full range, advance to the ceiling.
+	// Full page → DB has more, advance only to the next task key.
+	target := exclusiveMaxKey
+	if len(resp.Tasks) >= pageSize {
+		target = resp.Progress.NextTaskKey
+	}
+	if q.exclusiveUpperBound.Less(target) {
+		q.updateExclusiveUpperBound(target, "prefetch-advance")
 	}
 	q.logger.Debug("prefetch complete",
 		tag.Dynamic("tasksFetched", len(resp.Tasks)),
-		tag.Dynamic("prevUpper", prevUpper),
 		tag.Dynamic("newUpper", q.exclusiveUpperBound),
 		tag.Dynamic("cacheSize", q.queue.Len()),
 	)
@@ -440,24 +426,27 @@ func (q *cachedQueueReader) isTaskCovered(key persistence.HistoryTaskKey) bool {
 
 // putTasks adds tasks to the cache and enforces the size cap.
 // Caller must hold q.mu.
-func (q *cachedQueueReader) putTasks(tasks []persistence.Task) {
+// putTasks adds tasks to the cache and enforces the size cap.
+// Returns true if RTrimBySize fired and updated exclusiveUpperBound,
+// meaning the caller must not re-advance the bound.
+// Caller must hold q.mu.
+func (q *cachedQueueReader) putTasks(tasks []persistence.Task) bool {
 	q.queue.PutTasks(tasks)
 	newUpper, trimmed := q.queue.RTrimBySize(q.options.MaxSize())
 	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
 
-	// If the cache trimmed tasks, the upper bound has already been updated to reflect the new end of the cache
 	if !trimmed {
-		return
+		return false
 	}
 
-	// RTrimBySize emptied the cache (MaxSize <= 0). Reset the upper bound to
-	// avoid claiming coverage over a range for which the cache holds no tasks.
 	if !newUpper.Greater(persistence.MinimumHistoryTaskKey) {
+		// RTrimBySize emptied the cache (MaxSize <= 0). Reset the upper bound to
+		// avoid claiming coverage over a range for which the cache holds no tasks.
 		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey, "rtrim-empty")
+	} else {
+		q.updateExclusiveUpperBound(newUpper, "rtrim-shrink")
 	}
-
-	q.updateExclusiveUpperBound(newUpper, "rtrim-shrink")
-	return
+	return true
 }
 
 // updateInclusiveLowerBound advances inclusiveLowerBound to newKey if it's
