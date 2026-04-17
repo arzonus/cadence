@@ -148,6 +148,7 @@ func TestNewConfig(t *testing.T) {
 		"TimerProcessorCacheEvictionSafeWindow":                {dynamicproperties.TimerProcessorCacheEvictionSafeWindow, time.Second},
 		"TimerProcessorCacheMinPrefetchInterval":               {dynamicproperties.TimerProcessorCacheMinPrefetchInterval, time.Second},
 		"TimerProcessorCacheTimeEvictionInterval":              {dynamicproperties.TimerProcessorCacheTimeEvictionInterval, time.Second},
+		"TimerProcessorCacheReadLevelSyncInterval":             {dynamicproperties.TimerProcessorCacheReadLevelSyncInterval, time.Second},
 		"TransferTaskBatchSize":                                {dynamicproperties.TransferTaskBatchSize, 47},
 		"TransferTaskDeleteBatchSize":                          {dynamicproperties.TransferTaskDeleteBatchSize, 48},
 		"TransferProcessorCompleteTransferFailureRetryCount":   {dynamicproperties.TransferProcessorCompleteTransferFailureRetryCount, 49},
