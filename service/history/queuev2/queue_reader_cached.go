@@ -515,7 +515,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 	if readLevel.Equal(persistence.MaximumHistoryTaskKey) {
 		readLevel = persistence.MinimumHistoryTaskKey
 	}
-	q.logger.Debug("ack level advancing lower bound",
+	q.logger.Debug("read level advancing lower bound",
 		tag.Dynamic("readLevel", readLevel),
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
