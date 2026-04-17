@@ -620,9 +620,7 @@ type findMismatchesInShadowResult struct {
 	// from the cache snapshot (after filtering benign eviction and inject races).
 	MissingFromCache []persistence.HistoryTaskKey
 	// ExtraInCache contains task keys present in the cache snapshot but absent
-	// from the DB response. These are typically benign (Inject races, tasks
-	// written to cache before the DB read completes) but are still reported as
-	// mismatches for observability via shadowMismatch.extraInCache in the log.
+	// from the DB response.
 	ExtraInCache []persistence.HistoryTaskKey
 	// NextKeyMismatch is true when the cache and DB disagree on the next-page
 	// boundary key, meaning a subsequent GetTask would start at different points.
@@ -639,20 +637,17 @@ func (q *cachedQueueReader) reportShadowComparison(
 	dbResp *GetTaskResponse,
 	logTags []tag.Tag,
 ) {
-	comparisonTags := append(logTags,
-		tag.Dynamic("dbTaskCount", len(dbResp.Tasks)),
-		tag.Dynamic("cacheTaskCount", len(cacheResp.Tasks)),
-	)
 	if !result.HasMismatches {
-		q.logger.Debug("shadow comparison matched", comparisonTags...)
+		q.logger.Debug("shadow comparison matched")
 		return
 	}
 
-	q.metrics.IncCounter(metrics.CachedQueueMismatchCounter)
-	mismatchTags := append(comparisonTags,
+	mismatchTags := append(logTags,
 		tag.Dynamic("shadowMismatch.missingFromCache", result.MissingFromCache),
 		tag.Dynamic("shadowMismatch.extraInCache", result.ExtraInCache),
 		tag.Dynamic("shadowMismatch.nextKeyMismatch", result.NextKeyMismatch),
+		tag.Dynamic("shadowMismatch.dbTaskCount", len(dbResp.Tasks)),
+		tag.Dynamic("shadowMismatch.cacheTaskCount", len(cacheResp.Tasks)),
 	)
 	if cacheResp.Progress != nil {
 		mismatchTags = append(mismatchTags, tag.Dynamic("shadowMismatch.cacheNextKey", cacheResp.Progress.NextTaskKey))
@@ -660,7 +655,15 @@ func (q *cachedQueueReader) reportShadowComparison(
 	if dbResp.Progress != nil {
 		mismatchTags = append(mismatchTags, tag.Dynamic("shadowMismatch.dbNextKey", dbResp.Progress.NextTaskKey))
 	}
-	q.logger.Warn("shadow comparison mismatch", mismatchTags...)
+
+	// NextKeyMismatch is a meaningful divergence even when task sets match, so count it as a mismatch.
+	// ExtraInCache is benign given task indepetency, but still a mismatch to be observed and counted.
+	if result.NextKeyMismatch || len(result.MissingFromCache) > 0 {
+		q.metrics.IncCounter(metrics.CachedQueueMismatchCounter)
+		q.logger.Warn("shadow comparison mismatch", mismatchTags...)
+	} else {
+		q.logger.Info("shadow comparison mismatch (only extra tasks in cache)", mismatchTags...)
+	}
 }
 
 // findMismatchesInShadow compares a cache snapshot response against the DB
