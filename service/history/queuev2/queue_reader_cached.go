@@ -237,17 +237,6 @@ func (q *cachedQueueReader) notifyPrefetch() {
 	}
 }
 
-// updateExclusiveUpperBound sets the upper bound and wakes the prefetchLoop.
-// Caller must hold q.mu.
-func (q *cachedQueueReader) updateExclusiveUpperBound(key persistence.HistoryTaskKey) {
-	q.logger.Debug("upper bound advancing",
-		tag.Dynamic("prevUpperBound", q.exclusiveUpperBound),
-		tag.Dynamic("newUpperBound", key),
-	)
-	q.exclusiveUpperBound = key
-	q.notifyPrefetch()
-}
-
 // nextPrefetchDelay returns how long to wait before the next prefetch. It
 // computes the trigger window relative to exclusiveUpperBound, clamped to
 // MinPrefetchInterval.
@@ -382,6 +371,12 @@ func (q *cachedQueueReader) prefetch() error {
 		)
 		q.queue.Clear()
 		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey)
+		// Reset lower bound directly: the queue is already empty so no LTrim is
+		// needed, and we must go backwards to MinimumHistoryTaskKey which
+		// updateInclusiveLowerBound (advance-only) would reject as a no-op.
+		q.logger.Debug("lower bound reset after gap detection",
+			tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
+		)
 		q.inclusiveLowerBound = persistence.MinimumHistoryTaskKey
 		return fmt.Errorf("gap detected: upper bound changed during fetch")
 	}
@@ -432,7 +427,6 @@ func (q *cachedQueueReader) isTaskCovered(key persistence.HistoryTaskKey) bool {
 func (q *cachedQueueReader) putTasks(tasks []persistence.Task) bool {
 	q.queue.PutTasks(tasks)
 	newUpper, trimmed := q.queue.RTrimBySize(q.options.MaxSize())
-	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
 
 	if !trimmed {
 		return false
@@ -448,11 +442,40 @@ func (q *cachedQueueReader) putTasks(tasks []persistence.Task) bool {
 	return true
 }
 
+// updateExclusiveUpperBound sets the upper bound and wakes the prefetchLoop.
+// Caller must hold q.mu.
+func (q *cachedQueueReader) updateExclusiveUpperBound(newKey persistence.HistoryTaskKey) {
+	q.logger.Debug("upper bound is updated",
+		tag.Dynamic("prevUpperBound", q.exclusiveUpperBound),
+		tag.Dynamic("newUpperBound", newKey),
+		tag.Dynamic("inclusiveLowerBound", q.inclusiveLowerBound),
+		tag.Dynamic("cacheSize", q.queue.Len()),
+	)
+
+	q.exclusiveUpperBound = newKey
+	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
+	q.notifyPrefetch()
+}
+
+// updateInclusiveLowerBound sets the lowe bound
+// Caller must hold q.mu.
+func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.HistoryTaskKey) {
+	q.logger.Debug("lower bound is updated",
+		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
+		tag.Dynamic("newLowerBound", newKey),
+		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
+		tag.Dynamic("cacheSize", q.queue.Len()),
+	)
+
+	q.inclusiveLowerBound = newKey
+	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
+}
+
 // updateInclusiveLowerBound advances inclusiveLowerBound to newKey if it's
 // ahead, trimming evicted tasks. Caps at exclusiveUpperBound when set to
 // preserve the lower <= upper invariant.
 // Caller must hold q.mu (write).
-func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.HistoryTaskKey) {
+func (q *cachedQueueReader) advanceInclusiveLowerBound(newKey persistence.HistoryTaskKey) {
 	if !q.exclusiveUpperBound.Equal(persistence.MinimumHistoryTaskKey) &&
 		newKey.Greater(q.exclusiveUpperBound) {
 		newKey = q.exclusiveUpperBound
@@ -462,15 +485,8 @@ func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.History
 		return
 	}
 
-	q.logger.Debug("lower bound advancing",
-		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
-		tag.Dynamic("newLowerBound", newKey),
-		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
-	)
-
-	q.inclusiveLowerBound = newKey
 	q.queue.LTrim(newKey)
-	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
+	q.updateInclusiveLowerBound(newKey)
 }
 
 // timeEvict advances inclusiveLowerBound to now - EvictionSafeWindow, evicting
@@ -482,7 +498,7 @@ func (q *cachedQueueReader) timeEvict() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.updateInclusiveLowerBound(evictBefore)
+	q.advanceInclusiveLowerBound(evictBefore)
 }
 
 // UpdateReadLevel advances the lower bound to the processor's ack position.
@@ -496,7 +512,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 		readLevel = persistence.MinimumHistoryTaskKey
 	}
 
-	q.updateInclusiveLowerBound(readLevel)
+	q.advanceInclusiveLowerBound(readLevel)
 }
 
 // Inject adds tasks within [inclusiveLowerBound, exclusiveUpperBound) to the
