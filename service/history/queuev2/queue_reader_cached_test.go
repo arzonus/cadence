@@ -1489,7 +1489,48 @@ func TestCachedQueueReader_PrefetchNoSpace(t *testing.T) {
 	assert.NoError(t, result)
 }
 
-// TestCachedQueueReader_PrefetchTrimPreventsUpperBoundAdvance verifies that when
+// TestCachedQueueReader_FirstPrefetchAdvancesLowerBound verifies that after the
+// first prefetch (when upperBound was MinimumHistoryTaskKey), inclusiveLowerBound
+// is advanced to the prefetch anchor (now - EvictionSafeWindow). Without this,
+// historical tasks from a previous shard owner pass isRangeCovered (lower =
+// MinimumHistoryTaskKey), the cache returns 0, and the tasks are permanently
+// skipped at shard takeover.
+func TestCachedQueueReader_FirstPrefetchAdvancesLowerBound(t *testing.T) {
+	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	ts := clock.NewMockedTimeSourceAt(now)
+	opts := defaultTestOptions()
+	evictionWindow := 10 * time.Second
+	opts.EvictionSafeWindow = dynamicproperties.GetDurationPropertyFn(evictionWindow)
+
+	r, base := newTestCachedReader(t, opts, ts)
+	// First prefetch: upperBound is MinimumHistoryTaskKey (nothing fetched yet).
+	assert.Equal(t, persistence.MinimumHistoryTaskKey, r.exclusiveUpperBound)
+
+	base.EXPECT().GetTask(gomock.Any(), gomock.Any()).Return(&GetTaskResponse{
+		Tasks: []persistence.Task{newTestTask(now.Add(1*time.Minute), 1)},
+		Progress: &GetTaskProgress{
+			NextTaskKey: persistence.NewHistoryTaskKey(now.Add(5*time.Minute), 0),
+		},
+	}, nil)
+
+	err := r.prefetch()
+	require.NoError(t, err)
+
+	// Lower bound must be anchored to now - EvictionSafeWindow, not left at MinimumHistoryTaskKey.
+	expectedLower := persistence.NewHistoryTaskKey(now.Add(-evictionWindow), 0)
+	assert.Equal(t, expectedLower, r.inclusiveLowerBound,
+		"first prefetch must set inclusiveLowerBound to the fetch anchor (now - EvictionSafeWindow) "+
+			"so historical tasks from the previous shard owner correctly miss the cache")
+
+	// Consequence: a request for tasks before the anchor is NOT covered,
+	// so it falls through to DB rather than returning 0 from cache.
+	r.mu.RLock()
+	oldTaskKey := persistence.NewHistoryTaskKey(now.Add(-20*time.Second), 0)
+	covered := r.isRangeCovered(oldTaskKey, persistence.NewHistoryTaskKey(now.Add(-15*time.Second), 0))
+	r.mu.RUnlock()
+	assert.False(t, covered, "tasks from before the fetch anchor must not be reported as covered")
+}
+
 // putTasks triggers RTrimBySize (because concurrent Inject calls filled the cache
 // between the capacity snapshot and the write-lock), the prefetch does NOT
 // re-advance exclusiveUpperBound past the trimmed point. Re-advancing would claim
