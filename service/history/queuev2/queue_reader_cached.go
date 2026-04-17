@@ -391,6 +391,21 @@ func (q *cachedQueueReader) prefetch() error {
 	if q.exclusiveUpperBound.Less(target) {
 		q.updateExclusiveUpperBound(target)
 	}
+
+	// On the first prefetch (upperBound was MinimumHistoryTaskKey), the fetch
+	// started at inclusiveMinTaskKey = now - EvictionSafeWindow. Tasks before
+	// that anchor were not fetched and will never be in the cache. Advance
+	// inclusiveLowerBound to match so that isRangeCovered correctly returns
+	// false for those historical ranges, forcing a DB fallback instead of
+	// returning 0 tasks from a falsely "covered" range.
+	//
+	// Without this, inclusiveLowerBound stays at MinimumHistoryTaskKey until
+	// timeEvict catches up (~60s), causing tasks from the previous shard owner
+	// to be permanently skipped at shard takeover.
+	if upperBound.Equal(persistence.MinimumHistoryTaskKey) {
+		q.updateInclusiveLowerBound(inclusiveMinTaskKey)
+	}
+
 	q.logger.Debug("prefetch complete",
 		tag.Dynamic("tasksFetched", len(resp.Tasks)),
 		tag.Dynamic("newUpper", q.exclusiveUpperBound),
@@ -681,7 +696,7 @@ func findMismatchesInShadow(
 	snapshotResp *GetTaskResponse, // cache response captured before the DB read
 	dbResp *GetTaskResponse,
 	preFetchLowerBound persistence.HistoryTaskKey, // lower bound at snapshot time
-	liveResp *GetTaskResponse,                     // cache re-read after the DB fetch
+	liveResp *GetTaskResponse, // cache re-read after the DB fetch
 ) findMismatchesInShadowResult {
 	snapshotIDs := make(map[int64]struct{}, len(snapshotResp.Tasks))
 	for _, t := range snapshotResp.Tasks {
