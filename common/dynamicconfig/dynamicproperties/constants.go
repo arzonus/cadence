@@ -3070,6 +3070,14 @@ const (
 	// Default value: 1s (1*time.Second)
 	// Allowed filters: N/A
 	TimerProcessorCacheTimeEvictionInterval
+	// TimerProcessorCacheReadLevelSyncInterval is how often the cached scheduled
+	// queue syncs the read level from the virtual queue manager to the cache reader,
+	// evicting tasks the processor has already passed.
+	// KeyName: history.timerProcessorCacheReadLevelSyncInterval
+	// Value type: Duration
+	// Default value: 1s (1*time.Second)
+	// Allowed filters: N/A
+	TimerProcessorCacheReadLevelSyncInterval
 	// TransferProcessorFailoverMaxStartJitterInterval is the max jitter interval for starting transfer
 	// failover queue processing. The actual jitter interval used will be a random duration between
 	// 0 and the max interval so that timer failover queue across different shards won't start at
@@ -5772,6 +5780,11 @@ var DurationKeys = map[DurationKey]DynamicDuration{
 	TimerProcessorCacheTimeEvictionInterval: {
 		KeyName:      "history.timerProcessorCacheTimeEvictionInterval",
 		Description:  "TimerProcessorCacheTimeEvictionInterval is how often the time-based eviction loop fires",
+		DefaultValue: time.Second,
+	},
+	TimerProcessorCacheReadLevelSyncInterval: {
+		KeyName:      "history.timerProcessorCacheReadLevelSyncInterval",
+		Description:  "TimerProcessorCacheReadLevelSyncInterval is how often the cached scheduled queue syncs the read level to the cache reader",
 		DefaultValue: time.Second,
 	},
 	TransferProcessorFailoverMaxStartJitterInterval: {
