@@ -239,10 +239,11 @@ func (q *cachedQueueReader) notifyPrefetch() {
 
 // updateExclusiveUpperBound sets the upper bound and wakes the prefetchLoop.
 // Caller must hold q.mu.
-func (q *cachedQueueReader) updateExclusiveUpperBound(key persistence.HistoryTaskKey) {
+func (q *cachedQueueReader) updateExclusiveUpperBound(key persistence.HistoryTaskKey, reason string) {
 	q.logger.Debug("upper bound advancing",
 		tag.Dynamic("prevUpperBound", q.exclusiveUpperBound),
 		tag.Dynamic("newUpperBound", key),
+		tag.Dynamic("reason", reason),
 	)
 	q.exclusiveUpperBound = key
 	q.notifyPrefetch()
@@ -381,7 +382,7 @@ func (q *cachedQueueReader) prefetch() error {
 			tag.Dynamic("newUpper", q.exclusiveUpperBound),
 		)
 		q.queue.Clear()
-		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey)
+		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey, "gap-detected-reset")
 		q.inclusiveLowerBound = persistence.MinimumHistoryTaskKey
 		return fmt.Errorf("gap detected: upper bound changed during fetch")
 	}
@@ -408,11 +409,11 @@ func (q *cachedQueueReader) prefetch() error {
 	// page we've seen everything in the range; advance to the ceiling.
 	if len(resp.Tasks) < pageSize {
 		if q.exclusiveUpperBound.Less(exclusiveMaxKey) {
-			q.updateExclusiveUpperBound(exclusiveMaxKey)
+			q.updateExclusiveUpperBound(exclusiveMaxKey, "prefetch-partial-page")
 		}
 	} else {
 		if q.exclusiveUpperBound.Less(resp.Progress.NextTaskKey) {
-			q.updateExclusiveUpperBound(resp.Progress.NextTaskKey)
+			q.updateExclusiveUpperBound(resp.Progress.NextTaskKey, "prefetch-full-page")
 		}
 	}
 	q.logger.Debug("prefetch complete",
@@ -450,12 +451,12 @@ func (q *cachedQueueReader) putTasks(tasks []persistence.Task) {
 				tag.Dynamic("newUpper", newUpper),
 				tag.Dynamic("prevUpper", q.exclusiveUpperBound),
 			)
-			q.updateExclusiveUpperBound(newUpper)
+			q.updateExclusiveUpperBound(newUpper, "rtrim-shrink")
 		} else {
 			// RTrimBySize emptied the cache (MaxSize <= 0). Reset the upper bound to
 			// avoid claiming coverage over a range for which the cache holds no tasks.
 			q.logger.Debug("cache emptied by RTrim, resetting upper bound")
-			q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey)
+			q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey, "rtrim-empty")
 		}
 	}
 	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
@@ -465,7 +466,7 @@ func (q *cachedQueueReader) putTasks(tasks []persistence.Task) {
 // ahead, trimming evicted tasks. Caps at exclusiveUpperBound when set to
 // preserve the lower <= upper invariant.
 // Caller must hold q.mu (write).
-func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.HistoryTaskKey) {
+func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.HistoryTaskKey, reason string) {
 	if !q.exclusiveUpperBound.Equal(persistence.MinimumHistoryTaskKey) &&
 		newKey.Greater(q.exclusiveUpperBound) {
 		newKey = q.exclusiveUpperBound
@@ -475,6 +476,7 @@ func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.History
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 		tag.Dynamic("newLowerBound", newKey),
 		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
+		tag.Dynamic("reason", reason),
 	}
 
 	if !newKey.Greater(q.inclusiveLowerBound) {
@@ -500,7 +502,7 @@ func (q *cachedQueueReader) timeEvict() {
 		tag.Dynamic("evictBefore", evictBefore),
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 	)
-	q.updateInclusiveLowerBound(evictBefore)
+	q.updateInclusiveLowerBound(evictBefore, "time-eviction")
 }
 
 // UpdateReadLevel advances the lower bound to the processor's ack position.
@@ -518,7 +520,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
 	)
-	q.updateInclusiveLowerBound(readLevel)
+	q.updateInclusiveLowerBound(readLevel, "ack-level-update")
 }
 
 // Inject adds tasks within [inclusiveLowerBound, exclusiveUpperBound) to the
@@ -566,6 +568,12 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 func (q *cachedQueueReader) GetTask(ctx context.Context, req *GetTaskRequest) (*GetTaskResponse, error) {
 	if q.isDisabled() {
 		q.logger.Debug("cache disabled, delegating to base")
+		return q.base.GetTask(ctx, req)
+	}
+	// During warmup the prefetch loop hasn't fully populated the cache yet.
+	// Serve all reads from the DB to avoid partial or stale results.
+	if q.isInWarmup() {
+		q.logger.Debug("cache in warmup, delegating to base")
 		return q.base.GetTask(ctx, req)
 	}
 
@@ -638,7 +646,8 @@ type findMismatchesInShadowResult struct {
 	// from the cache snapshot (after filtering benign eviction and inject races).
 	MissingFromCache []persistence.HistoryTaskKey
 	// ExtraInCache contains task keys present in the cache snapshot but absent
-	// from the DB response (after filtering evicted tasks).
+	// from the DB response. These are benign (task independence means having extra
+	// tasks in cache causes no harm) and are tracked separately for observability.
 	ExtraInCache []persistence.HistoryTaskKey
 	// NextKeyMismatch is true when the cache and DB disagree on the next-page
 	// boundary key, meaning a subsequent GetTask would start at different points.
@@ -649,6 +658,9 @@ type findMismatchesInShadowResult struct {
 
 // reportShadowComparison logs the result of a shadow comparison and increments
 // the mismatch metric when HasMismatches is true.
+// ExtraInCache (tasks in cache but not in DB) is always logged for observability
+// but does not trigger the metric counter or Warn log — extra tasks are benign
+// due to task independence (Inject races; tasks written to cache before DB commits).
 func (q *cachedQueueReader) reportShadowComparison(
 	result findMismatchesInShadowResult,
 	cacheResp *GetTaskResponse,
@@ -658,6 +670,7 @@ func (q *cachedQueueReader) reportShadowComparison(
 	comparisonTags := append(logTags,
 		tag.Dynamic("dbTaskCount", len(dbResp.Tasks)),
 		tag.Dynamic("cacheTaskCount", len(cacheResp.Tasks)),
+		tag.Dynamic("extraInCache", result.ExtraInCache),
 	)
 	if !result.HasMismatches {
 		q.logger.Debug("shadow comparison matched", comparisonTags...)
@@ -667,7 +680,6 @@ func (q *cachedQueueReader) reportShadowComparison(
 	q.metrics.IncCounter(metrics.CachedQueueMismatchCounter)
 	mismatchTags := append(comparisonTags,
 		tag.Dynamic("missingFromCache", result.MissingFromCache),
-		tag.Dynamic("extraInCache", result.ExtraInCache),
 		tag.Dynamic("nextKeyMismatch", result.NextKeyMismatch),
 	)
 	if cacheResp.Progress != nil {
@@ -725,13 +737,15 @@ func findMismatchesInShadow(
 		result.MissingFromCache = append(result.MissingFromCache, t.GetTaskKey())
 	}
 
-	// Cache snapshot tasks missing from DB.
+	// Cache snapshot tasks missing from DB — tracked separately; extra tasks are
+	// benign given task independence (Inject races, tasks written but not yet
+	// committed when the DB read fires).
 	for _, t := range snapshotResp.Tasks {
 		if _, found := dbIDs[t.GetTaskID()]; found {
 			continue // in DB result
 		}
 		if t.GetTaskKey().Less(preFetchLowerBound) {
-			continue // evicted between snapshot and live re-read; not a bug
+			continue // evicted between snapshot and live re-read
 		}
 		result.ExtraInCache = append(result.ExtraInCache, t.GetTaskKey())
 	}
@@ -744,7 +758,8 @@ func findMismatchesInShadow(
 		result.NextKeyMismatch = !snapshotResp.Progress.NextTaskKey.Equal(dbResp.Progress.NextTaskKey)
 	}
 
-	result.HasMismatches = len(result.MissingFromCache) > 0 || len(result.ExtraInCache) > 0 || result.NextKeyMismatch
+	// HasMismatches is true for actionable divergences; ExtraInCache is informational only.
+	result.HasMismatches = len(result.MissingFromCache) > 0 || result.NextKeyMismatch
 	return result
 }
 
