@@ -193,7 +193,7 @@ func TestCachedQueueReader_UpdateInclusiveLowerBound(t *testing.T) {
 			}
 
 			r.mu.Lock()
-			r.updateInclusiveLowerBound(tc.newKey, "test")
+			r.updateInclusiveLowerBound(tc.newKey)
 			r.mu.Unlock()
 
 			assert.Equal(t, tc.wantLowerBound, r.inclusiveLowerBound)
