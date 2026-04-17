@@ -443,23 +443,21 @@ func (q *cachedQueueReader) isTaskCovered(key persistence.HistoryTaskKey) bool {
 func (q *cachedQueueReader) putTasks(tasks []persistence.Task) {
 	q.queue.PutTasks(tasks)
 	newUpper, trimmed := q.queue.RTrimBySize(q.options.MaxSize())
-	// Only shrink exclusiveUpperBound on an actual trim; otherwise the existing
-	// bound (set by the prefetch loop) already covers the full fetched range.
-	if trimmed {
-		if newUpper.Greater(persistence.MinimumHistoryTaskKey) {
-			q.logger.Debug("cache trimmed, upper bound shrunk",
-				tag.Dynamic("newUpper", newUpper),
-				tag.Dynamic("prevUpper", q.exclusiveUpperBound),
-			)
-			q.updateExclusiveUpperBound(newUpper, "rtrim-shrink")
-		} else {
-			// RTrimBySize emptied the cache (MaxSize <= 0). Reset the upper bound to
-			// avoid claiming coverage over a range for which the cache holds no tasks.
-			q.logger.Debug("cache emptied by RTrim, resetting upper bound")
-			q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey, "rtrim-empty")
-		}
-	}
 	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
+
+	// If the cache trimmed tasks, the upper bound has already been updated to reflect the new end of the cache
+	if !trimmed {
+		return
+	}
+
+	// RTrimBySize emptied the cache (MaxSize <= 0). Reset the upper bound to
+	// avoid claiming coverage over a range for which the cache holds no tasks.
+	if !newUpper.Greater(persistence.MinimumHistoryTaskKey) {
+		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey, "rtrim-empty")
+	}
+
+	q.updateExclusiveUpperBound(newUpper, "rtrim-shrink")
+	return
 }
 
 // updateInclusiveLowerBound advances inclusiveLowerBound to newKey if it's
@@ -472,19 +470,17 @@ func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.History
 		newKey = q.exclusiveUpperBound
 	}
 
-	logTags := []tag.Tag{
+	if !newKey.Greater(q.inclusiveLowerBound) {
+		return
+	}
+
+	q.logger.Debug("lower bound advancing",
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 		tag.Dynamic("newLowerBound", newKey),
 		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
 		tag.Dynamic("reason", reason),
-	}
+	)
 
-	if !newKey.Greater(q.inclusiveLowerBound) {
-		q.logger.Debug("lower bound not advanced, new key is not ahead", logTags...)
-		return
-	}
-
-	q.logger.Debug("lower bound advancing", logTags...)
 	q.inclusiveLowerBound = newKey
 	q.queue.LTrim(newKey)
 	q.metrics.RecordHistogramValue(metrics.CachedQueueSizeHistogram, float64(q.queue.Len()))
@@ -498,10 +494,7 @@ func (q *cachedQueueReader) timeEvict() {
 	)
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.logger.Debug("running time eviction",
-		tag.Dynamic("evictBefore", evictBefore),
-		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
-	)
+
 	q.updateInclusiveLowerBound(evictBefore, "time-eviction")
 }
 
@@ -515,11 +508,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 	if readLevel.Equal(persistence.MaximumHistoryTaskKey) {
 		readLevel = persistence.MinimumHistoryTaskKey
 	}
-	q.logger.Debug("read level advancing lower bound",
-		tag.Dynamic("readLevel", readLevel),
-		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
-		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
-	)
+
 	q.updateInclusiveLowerBound(readLevel, "read-level-update")
 }
 
@@ -566,14 +555,8 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 // Shadow mode always hits the DB and compares with the cache result to detect
 // divergence. Disabled mode bypasses the cache entirely.
 func (q *cachedQueueReader) GetTask(ctx context.Context, req *GetTaskRequest) (*GetTaskResponse, error) {
-	if q.isDisabled() {
-		q.logger.Debug("cache disabled, delegating to base")
-		return q.base.GetTask(ctx, req)
-	}
-	// During warmup the prefetch loop hasn't fully populated the cache yet.
-	// Serve all reads from the DB to avoid partial or stale results.
-	if q.isInWarmup() {
-		q.logger.Debug("cache in warmup, delegating to base")
+	if q.isDisabled() || q.isInWarmup() {
+		q.logger.Debug("fail back to original get task, cache is disabled or in warmup")
 		return q.base.GetTask(ctx, req)
 	}
 
@@ -704,7 +687,7 @@ func findMismatchesInShadow(
 	snapshotResp *GetTaskResponse, // cache response captured before the DB read
 	dbResp *GetTaskResponse,
 	preFetchLowerBound persistence.HistoryTaskKey, // lower bound at snapshot time
-	liveResp *GetTaskResponse, // cache re-read after the DB fetch
+	liveResp *GetTaskResponse,                     // cache re-read after the DB fetch
 ) findMismatchesInShadowResult {
 	snapshotIDs := make(map[int64]struct{}, len(snapshotResp.Tasks))
 	for _, t := range snapshotResp.Tasks {
@@ -766,12 +749,8 @@ func findMismatchesInShadow(
 // from cache when the request falls within the prefetched window. Bypasses
 // cache when disabled or in shadow mode.
 func (q *cachedQueueReader) LookAHead(ctx context.Context, req *LookAHeadRequest) (*LookAHeadResponse, error) {
-	if q.isDisabled() || q.isShadow() {
-		q.logger.Debug("look-ahead delegating to base, disabled or shadow mode")
-		return q.base.LookAHead(ctx, req)
-	}
-	if q.isInWarmup() {
-		q.logger.Debug("look-ahead delegating to base, cache in warmup")
+	if q.isDisabled() || q.isShadow() || q.isInWarmup() {
+		q.logger.Debug("fail back to original look-ahead, cache is disabled, shadow mode or in warmup")
 		return q.base.LookAHead(ctx, req)
 	}
 
