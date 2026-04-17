@@ -166,6 +166,7 @@ type Config struct {
 	TimerProcessorCacheEvictionSafeWindow             dynamicproperties.DurationPropertyFn
 	TimerProcessorCacheMinPrefetchInterval            dynamicproperties.DurationPropertyFn
 	TimerProcessorCacheTimeEvictionInterval           dynamicproperties.DurationPropertyFn
+	TimerProcessorCacheReadLevelSyncInterval          dynamicproperties.DurationPropertyFn
 
 	// TransferQueueProcessor settings
 	TransferTaskBatchSize                                dynamicproperties.IntPropertyFn
@@ -481,6 +482,7 @@ func New(dc *dynamicconfig.Collection, numberOfShards int, maxMessageSize int, i
 		TimerProcessorCacheEvictionSafeWindow:                dc.GetDurationProperty(dynamicproperties.TimerProcessorCacheEvictionSafeWindow),
 		TimerProcessorCacheMinPrefetchInterval:               dc.GetDurationProperty(dynamicproperties.TimerProcessorCacheMinPrefetchInterval),
 		TimerProcessorCacheTimeEvictionInterval:              dc.GetDurationProperty(dynamicproperties.TimerProcessorCacheTimeEvictionInterval),
+		TimerProcessorCacheReadLevelSyncInterval:             dc.GetDurationProperty(dynamicproperties.TimerProcessorCacheReadLevelSyncInterval),
 		TransferTaskBatchSize:                                dc.GetIntProperty(dynamicproperties.TransferTaskBatchSize),
 		TransferTaskDeleteBatchSize:                          dc.GetIntProperty(dynamicproperties.TransferTaskDeleteBatchSize),
 		TransferProcessorFailoverMaxStartJitterInterval:      dc.GetDurationProperty(dynamicproperties.TransferProcessorFailoverMaxStartJitterInterval),
