@@ -371,13 +371,7 @@ func (q *cachedQueueReader) prefetch() error {
 		)
 		q.queue.Clear()
 		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey)
-		// Reset lower bound directly: the queue is already empty so no LTrim is
-		// needed, and we must go backwards to MinimumHistoryTaskKey which
-		// updateInclusiveLowerBound (advance-only) would reject as a no-op.
-		q.logger.Debug("lower bound reset after gap detection",
-			tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
-		)
-		q.inclusiveLowerBound = persistence.MinimumHistoryTaskKey
+		q.updateInclusiveLowerBound(persistence.MinimumHistoryTaskKey)
 		return fmt.Errorf("gap detected: upper bound changed during fetch")
 	}
 
@@ -520,14 +514,8 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 // loads them as the window advances. No-op when the cache is off or during
 // the warmup period.
 func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
-	if q.isDisabled() {
-		q.logger.Debug("inject skipped, cache disabled")
-		return
-	}
-
-	// Skip during warmup period or if Start has not been called yet.
-	if q.isInWarmup() {
-		q.logger.Debug("inject skipped, not started or in warmup")
+	if q.isDisabled() || q.isInWarmup() {
+		q.logger.Debug("inject skipped, cache disabled or in warmup")
 		return
 	}
 
