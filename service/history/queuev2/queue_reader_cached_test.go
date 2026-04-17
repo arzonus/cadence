@@ -904,6 +904,7 @@ func TestCachedQueueReader_LookAHead_Enabled(t *testing.T) {
 
 			r := newCachedQueueReaderWithOptions(base, queue, opts, ts, testlogger.New(t), metrics.NoopScope)
 			r.exclusiveUpperBound = tc.upperBound
+			r.injectAllowedAfter = time.Time{} // skip warmup for unit tests
 			if !tc.lowerBound.Equal(persistence.MinimumHistoryTaskKey) {
 				r.inclusiveLowerBound = tc.lowerBound
 			}
@@ -1985,13 +1986,13 @@ func TestFindMismatchesInShadow(t *testing.T) {
 			wantHasMismatches:    true,
 		},
 		{
-			name:               "cache task missing from DB — informational only, not a mismatch",
+			name:               "cache task missing from DB — benign but still a mismatch for observability",
 			snapshotResp:       resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			dbResp:             resp([]persistence.Task{task(10, 1)}, 30),
 			preFetchLowerBound: preFetchLower,
 			liveResp:           resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			wantExtraInCache:   []int64{2},
-			wantHasMismatches:  false, // ExtraInCache alone is benign — does not set HasMismatches
+			wantHasMismatches:  true, // ExtraInCache sets HasMismatches for observability
 		},
 		{
 			name:               "benign inject race — task not in snapshot but in live",
