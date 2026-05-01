@@ -2004,7 +2004,6 @@ func TestFindMismatchesInShadow(t *testing.T) {
 		snapshotResp         *GetTaskResponse
 		dbResp               *GetTaskResponse
 		preFetchLowerBound   persistence.HistoryTaskKey
-		liveResp             *GetTaskResponse
 		wantMissingFromCache []int64
 		wantExtraInCache     []int64
 		wantNextKeyMismatch  bool
@@ -2015,14 +2014,12 @@ func TestFindMismatchesInShadow(t *testing.T) {
 			snapshotResp:       resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			dbResp:             resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			preFetchLowerBound: preFetchLower,
-			liveResp:           resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 		},
 		{
 			name:                 "DB task missing from cache",
 			snapshotResp:         resp([]persistence.Task{task(10, 1)}, 30),
 			dbResp:               resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			preFetchLowerBound:   preFetchLower,
-			liveResp:             resp([]persistence.Task{task(10, 1)}, 30),
 			wantMissingFromCache: []int64{2},
 			wantHasMismatches:    true,
 		},
@@ -2031,30 +2028,28 @@ func TestFindMismatchesInShadow(t *testing.T) {
 			snapshotResp:       resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			dbResp:             resp([]persistence.Task{task(10, 1)}, 30),
 			preFetchLowerBound: preFetchLower,
-			liveResp:           resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
 			wantExtraInCache:   []int64{2},
 			wantHasMismatches:  true, // ExtraInCache sets HasMismatches for observability
 		},
 		{
-			name:               "benign inject race — task not in snapshot but in live",
-			snapshotResp:       resp([]persistence.Task{task(10, 1)}, 30),
-			dbResp:             resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
-			preFetchLowerBound: preFetchLower,
-			liveResp:           resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
+			name:                 "DB task missing from cache snapshot — real miss, no liveResp filter",
+			snapshotResp:         resp([]persistence.Task{task(10, 1)}, 30),
+			dbResp:               resp([]persistence.Task{task(10, 1), task(20, 2)}, 30),
+			preFetchLowerBound:   preFetchLower,
+			wantMissingFromCache: []int64{2},
+			wantHasMismatches:    true,
 		},
 		{
 			name:               "eviction — below preFetchLowerBound skipped both directions",
 			snapshotResp:       resp([]persistence.Task{task(-10, 1), task(20, 2)}, 30),
 			dbResp:             resp([]persistence.Task{task(20, 2)}, 30),
 			preFetchLowerBound: preFetchLower,
-			liveResp:           resp([]persistence.Task{task(20, 2)}, 30),
 		},
 		{
 			name:                "NextTaskKey mismatch — tasks match but next page differs",
 			snapshotResp:        resp([]persistence.Task{task(10, 1)}, 20),
 			dbResp:              resp([]persistence.Task{task(10, 1)}, 30),
 			preFetchLowerBound:  preFetchLower,
-			liveResp:            resp([]persistence.Task{task(10, 1)}, 20),
 			wantNextKeyMismatch: true,
 			wantHasMismatches:   true,
 		},
@@ -2062,7 +2057,7 @@ func TestFindMismatchesInShadow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := findMismatchesInShadow(tc.snapshotResp, tc.dbResp, tc.preFetchLowerBound, tc.liveResp)
+			result := findMismatchesInShadow(tc.snapshotResp, tc.dbResp, tc.preFetchLowerBound)
 
 			if len(tc.wantMissingFromCache) == 0 {
 				assert.Empty(t, result.MissingFromCache, "missingFromCache")
