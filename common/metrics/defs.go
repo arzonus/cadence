@@ -3937,7 +3937,6 @@ var MetricDefs = map[ServiceIdx]map[MetricIdx]metricDefinition{
 		CachedQueueSizeHistogram:                                      {metricName: "cached_queue_size", metricType: Histogram},
 		CachedQueueMismatchCounter:                                    {metricName: "cached_queue_mismatch", metricType: Counter},
 	},
-	},
 	Matching: {
 		PollSuccessPerTaskListCounter:                           {metricName: "poll_success_per_tl", metricRollupName: "poll_success"},
 		PollTimeoutPerTaskListCounter:                           {metricName: "poll_timeouts_per_tl", metricRollupName: "poll_timeouts"},
