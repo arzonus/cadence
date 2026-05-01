@@ -27,7 +27,6 @@ package queuev2
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -544,8 +543,16 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 
 	var covered []persistence.Task
 	for _, t := range tasks {
-		if q.isTaskCovered(t.GetTaskKey()) {
+		key := t.GetTaskKey()
+		if q.isTaskCovered(key) {
+			q.logger.Debug("inject task accepted",
+				append(logTags, tag.Dynamic("visibilityTimestamp", key.GetScheduledTime()))...,
+			)
 			covered = append(covered, t)
+		} else {
+			q.logger.Debug("inject task skipped, outside cache window",
+				append(logTags, tag.Dynamic("visibilityTimestamp", key.GetScheduledTime()))...,
+			)
 		}
 	}
 
@@ -614,17 +621,7 @@ func (q *cachedQueueReader) getTaskInShadow(
 		return dbResp, err
 	}
 
-	// Re-read the current cache to filter tasks that arrived via Inject after
-	// the snapshot (benign race) and tasks evicted below snapshotLowerBound.
-	q.mu.RLock()
-	liveResp := q.queue.GetTasks(&GetTaskRequest{
-		Progress:  req.Progress,
-		Predicate: req.Predicate,
-		PageSize:  math.MaxInt32,
-	})
-	q.mu.RUnlock()
-
-	result := findMismatchesInShadow(cacheResp, dbResp, snapshotLowerBound, liveResp)
+	result := findMismatchesInShadow(cacheResp, dbResp, snapshotLowerBound)
 	q.reportShadowComparison(result, cacheResp, dbResp, logTags)
 	return dbResp, nil
 }
@@ -684,19 +681,21 @@ func (q *cachedQueueReader) reportShadowComparison(
 // findMismatchesInShadow compares a cache snapshot response against the DB
 // response for the same request and returns a findMismatchesInShadowResult.
 //
-// Task comparison filters two benign cases:
-//   - keys below preFetchLowerBound: evicted between snapshot and live re-read
-//   - for MissingFromCache: keys in liveResp arrived via Inject after the
-//     snapshot (may not yet be visible to the DB read)
+// Task comparison filters one benign case:
+//   - keys below preFetchLowerBound: evicted since snapshot was taken
 //
 // Compares by taskID rather than full key: injected tasks have nanosecond
 // timestamps whereas Cassandra stores millisecond precision, so full-key
 // comparison produces false positives for every injected task.
+//
+// Note: there is no second cache re-read to filter in-flight Inject races.
+// By the scheduledTaskMaxReadLevel invariant, every new task has
+// visibilityTimestamp > readLevel, so it cannot appear in the GetTask range
+// at commit time. Any DB task absent from the cache snapshot is a real miss.
 func findMismatchesInShadow(
 	snapshotResp *GetTaskResponse, // cache response captured before the DB read
 	dbResp *GetTaskResponse,
 	preFetchLowerBound persistence.HistoryTaskKey, // lower bound at snapshot time
-	liveResp *GetTaskResponse, // cache re-read after the DB fetch
 ) findMismatchesInShadowResult {
 	snapshotIDs := make(map[int64]struct{}, len(snapshotResp.Tasks))
 	for _, t := range snapshotResp.Tasks {
@@ -705,10 +704,6 @@ func findMismatchesInShadow(
 	dbIDs := make(map[int64]struct{}, len(dbResp.Tasks))
 	for _, t := range dbResp.Tasks {
 		dbIDs[t.GetTaskID()] = struct{}{}
-	}
-	liveIDs := make(map[int64]struct{}, len(liveResp.Tasks))
-	for _, t := range liveResp.Tasks {
-		liveIDs[t.GetTaskID()] = struct{}{}
 	}
 
 	var result findMismatchesInShadowResult
@@ -719,23 +714,19 @@ func findMismatchesInShadow(
 			continue // in snapshot
 		}
 		if t.GetTaskKey().Less(preFetchLowerBound) {
-			continue // evicted between snapshot and live re-read
-		}
-		if _, found := liveIDs[t.GetTaskID()]; found {
-			continue // arrived via Inject after snapshot (benign race)
+			continue // evicted since snapshot
 		}
 		result.MissingFromCache = append(result.MissingFromCache, t.GetTaskKey())
 	}
 
 	// Cache snapshot tasks missing from DB — tracked separately; extra tasks are
-	// benign given task independence (Inject races, tasks written but not yet
-	// committed when the DB read fires).
+	// benign (Inject races, tasks written but not yet committed when the DB read fires).
 	for _, t := range snapshotResp.Tasks {
 		if _, found := dbIDs[t.GetTaskID()]; found {
 			continue // in DB result
 		}
 		if t.GetTaskKey().Less(preFetchLowerBound) {
-			continue // evicted between snapshot and live re-read
+			continue // evicted since snapshot
 		}
 		result.ExtraInCache = append(result.ExtraInCache, t.GetTaskKey())
 	}
