@@ -546,12 +546,12 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 		key := t.GetTaskKey()
 		if q.isTaskCovered(key) {
 			q.logger.Debug("inject task accepted",
-				append(logTags, tag.Dynamic("visibilityTimestamp", key.GetScheduledTime()))...,
+				append(logTags, tag.Dynamic("taskKey", key))...,
 			)
 			covered = append(covered, t)
 		} else {
 			q.logger.Debug("inject task skipped, outside cache window",
-				append(logTags, tag.Dynamic("visibilityTimestamp", key.GetScheduledTime()))...,
+				append(logTags, tag.Dynamic("taskKey", key))...,
 			)
 		}
 	}
