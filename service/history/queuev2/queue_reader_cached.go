@@ -428,12 +428,19 @@ func (q *cachedQueueReader) isTaskCovered(key persistence.HistoryTaskKey) bool {
 
 // putTasks adds tasks to the cache and enforces the size cap.
 // Caller must hold q.mu.
-// putTasks adds tasks to the cache and enforces the size cap.
 // Returns true if RTrimBySize fired and updated exclusiveUpperBound,
 // meaning the caller must not re-advance the bound.
-// Caller must hold q.mu.
 func (q *cachedQueueReader) putTasks(tasks []persistence.Task) bool {
-	q.queue.PutTasks(tasks)
+	// taskID=0 is reserved for range-boundary sentinel keys (e.g. exclusiveUpperBound).
+	// Real tasks always receive a non-zero ID from generateTaskIDLocked.
+	// Inserting sentinels would corrupt the queue ordering.
+	filtered := tasks[:0]
+	for _, t := range tasks {
+		if t.GetTaskID() != 0 {
+			filtered = append(filtered, t)
+		}
+	}
+	q.queue.PutTasks(filtered)
 	newUpper, trimmed := q.queue.RTrimBySize(q.options.MaxSize())
 
 	if !trimmed {
