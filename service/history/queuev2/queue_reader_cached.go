@@ -352,6 +352,12 @@ func (q *cachedQueueReader) prefetch() error {
 		pageSize = q.options.PrefetchPageSize()
 	}
 
+	// Record the prefetch's target window so Inject can buffer tasks that arrive
+	// while the DB call is in-flight. Cleared under the write lock after the call.
+	q.mu.Lock()
+	q.prefetchTargetUpper = exclusiveMaxKey
+	q.mu.Unlock()
+
 	resp, err := q.base.GetTask(q.ctx, &GetTaskRequest{
 		Progress: &GetTaskProgress{
 			Range: Range{
@@ -366,11 +372,16 @@ func (q *cachedQueueReader) prefetch() error {
 	})
 	if err != nil {
 		q.logger.Error("prefetch failed", tag.Error(err))
+		q.mu.Lock()
+		q.prefetchTargetUpper = persistence.MinimumHistoryTaskKey
+		q.drainPendingInjectBuffer()
+		q.mu.Unlock()
 		return fmt.Errorf("base.GetTask failed: %w", err)
 	}
 
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.prefetchTargetUpper = persistence.MinimumHistoryTaskKey
 
 	// Upper bound changed while we held the lock (e.g. a concurrent Inject
 	// triggered RTrimBySize, shrinking the window). The fetched tasks start at
@@ -379,6 +390,7 @@ func (q *cachedQueueReader) prefetch() error {
 	// existing cache remains valid for [inclusiveLowerBound, exclusiveUpperBound).
 	// The next prefetch will fill the gap from the new exclusiveUpperBound.
 	if !q.exclusiveUpperBound.Equal(upperBound) {
+		q.drainPendingInjectBuffer()
 		q.logger.Info("gap detected, discarding fetched data",
 			tag.Dynamic("prevUpper", upperBound),
 			tag.Dynamic("newUpper", q.exclusiveUpperBound),
@@ -416,6 +428,8 @@ func (q *cachedQueueReader) prefetch() error {
 	if upperBound.Equal(persistence.MinimumHistoryTaskKey) {
 		q.updateInclusiveLowerBound(inclusiveMinTaskKey)
 	}
+
+	q.drainPendingInjectBuffer()
 
 	q.logger.Debug("prefetch complete",
 		tag.Dynamic("tasksFetched", len(resp.Tasks)),
@@ -561,6 +575,15 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 				append(logTags, tag.Dynamic("taskKey", key))...,
 			)
 			covered = append(covered, t)
+		} else if !q.prefetchTargetUpper.Equal(persistence.MinimumHistoryTaskKey) &&
+			!key.Less(q.inclusiveLowerBound) &&
+			key.Less(q.prefetchTargetUpper) {
+			// Task is in the range the in-flight prefetch is fetching. Buffer it
+			// and drain it into the cache after the prefetch advances the window.
+			q.logger.Debug("inject task buffered, pending prefetch",
+				append(logTags, tag.Dynamic("taskKey", key))...,
+			)
+			q.pendingInjectBuffer = append(q.pendingInjectBuffer, t)
 		} else {
 			q.logger.Debug("inject task skipped, outside cache window",
 				append(logTags, tag.Dynamic("taskKey", key))...,
@@ -574,6 +597,24 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 	}
 
 	q.putTasks(covered)
+}
+
+// drainPendingInjectBuffer inserts buffered tasks that now fall within the
+// current cache window. Must be called under q.mu (write lock).
+func (q *cachedQueueReader) drainPendingInjectBuffer() {
+	if len(q.pendingInjectBuffer) == 0 {
+		return
+	}
+	var covered []persistence.Task
+	for _, t := range q.pendingInjectBuffer {
+		if q.isTaskCovered(t.GetTaskKey()) {
+			covered = append(covered, t)
+		}
+	}
+	q.pendingInjectBuffer = q.pendingInjectBuffer[:0]
+	if len(covered) > 0 {
+		q.putTasks(covered)
+	}
 }
 
 // GetTask serves tasks from the cache when the range is fully covered.
