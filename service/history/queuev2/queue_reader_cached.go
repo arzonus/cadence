@@ -301,7 +301,7 @@ func (q *cachedQueueReader) isInWarmup() bool {
 // (prefetchLoop) schedules the next attempt.
 func (q *cachedQueueReader) prefetch() error {
 	if q.isDisabled() {
-		q.logger.Debug("prefetch skipped, cache disabled")
+		q.logger.Info("prefetch skipped, cache disabled")
 		return nil
 	}
 
@@ -318,7 +318,7 @@ func (q *cachedQueueReader) prefetch() error {
 	// The prefetchLoop retries after MinPrefetchInterval once the processor
 	// has consumed some entries.
 	if availableCacheSize <= 0 {
-		q.logger.Debug("prefetch skipped, cache full")
+		q.logger.Info("prefetch skipped, cache full")
 		return nil // not an error — the loop will reschedule via nextPrefetchDelay
 	}
 
@@ -338,7 +338,7 @@ func (q *cachedQueueReader) prefetch() error {
 
 	// Window is already covered; skip the DB round-trip.
 	if !inclusiveMinTaskKey.Less(exclusiveMaxKey) {
-		q.logger.Debug("prefetch skipped, window already covered",
+		q.logger.Info("prefetch skipped, window already covered",
 			tag.Dynamic("inclusiveMinTaskKey", inclusiveMinTaskKey),
 			tag.Dynamic("exclusiveMaxKey", exclusiveMaxKey),
 		)
@@ -431,7 +431,7 @@ func (q *cachedQueueReader) prefetch() error {
 
 	q.drainPendingInjectBuffer()
 
-	q.logger.Debug("prefetch complete",
+	q.logger.Info("prefetch complete",
 		tag.Dynamic("tasksFetched", len(resp.Tasks)),
 		tag.Dynamic("newUpper", q.exclusiveUpperBound),
 		tag.Dynamic("cacheSize", q.queue.Len()),
@@ -479,7 +479,7 @@ func (q *cachedQueueReader) putTasks(tasks []persistence.Task) bool {
 // updateExclusiveUpperBound sets the upper bound and wakes the prefetchLoop.
 // Caller must hold q.mu.
 func (q *cachedQueueReader) updateExclusiveUpperBound(newKey persistence.HistoryTaskKey) {
-	q.logger.Debug("upper bound is updated",
+	q.logger.Info("upper bound is updated",
 		tag.Dynamic("prevUpperBound", q.exclusiveUpperBound),
 		tag.Dynamic("newUpperBound", newKey),
 		tag.Dynamic("inclusiveLowerBound", q.inclusiveLowerBound),
@@ -494,7 +494,7 @@ func (q *cachedQueueReader) updateExclusiveUpperBound(newKey persistence.History
 // updateInclusiveLowerBound sets the lowe bound
 // Caller must hold q.mu.
 func (q *cachedQueueReader) updateInclusiveLowerBound(newKey persistence.HistoryTaskKey) {
-	q.logger.Debug("lower bound is updated",
+	q.logger.Info("lower bound is updated",
 		tag.Dynamic("prevLowerBound", q.inclusiveLowerBound),
 		tag.Dynamic("newLowerBound", newKey),
 		tag.Dynamic("exclusiveUpperBound", q.exclusiveUpperBound),
@@ -555,7 +555,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 // the warmup period.
 func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 	if q.isDisabled() || q.isInWarmup() {
-		q.logger.Debug("inject skipped, cache disabled or in warmup")
+		q.logger.Info("inject skipped, cache disabled or in warmup")
 		return
 	}
 
@@ -571,7 +571,7 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 	for _, t := range tasks {
 		key := t.GetTaskKey()
 		if q.isTaskCovered(key) {
-			q.logger.Debug("inject task accepted",
+			q.logger.Info("inject task accepted",
 				append(logTags, tag.Dynamic("taskKey", key))...,
 			)
 			covered = append(covered, t)
@@ -580,19 +580,19 @@ func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 			key.Less(q.prefetchTargetUpper) {
 			// Task is in the range the in-flight prefetch is fetching. Buffer it
 			// and drain it into the cache after the prefetch advances the window.
-			q.logger.Debug("inject task buffered, pending prefetch",
+			q.logger.Info("inject task buffered, pending prefetch",
 				append(logTags, tag.Dynamic("taskKey", key))...,
 			)
 			q.pendingInjectBuffer = append(q.pendingInjectBuffer, t)
 		} else {
-			q.logger.Debug("inject task skipped, outside cache window",
+			q.logger.Info("inject task skipped, outside cache window",
 				append(logTags, tag.Dynamic("taskKey", key))...,
 			)
 		}
 	}
 
 	if len(covered) == 0 {
-		q.logger.Debug("no tasks within cache window", logTags...)
+		q.logger.Info("no tasks within cache window", logTags...)
 		return
 	}
 
@@ -622,7 +622,7 @@ func (q *cachedQueueReader) drainPendingInjectBuffer() {
 // divergence. Disabled mode bypasses the cache entirely.
 func (q *cachedQueueReader) GetTask(ctx context.Context, req *GetTaskRequest) (*GetTaskResponse, error) {
 	if q.isDisabled() || q.isInWarmup() {
-		q.logger.Debug("fail back to original get task, cache is disabled or in warmup")
+		q.logger.Info("fail back to original get task, cache is disabled or in warmup")
 		return q.base.GetTask(ctx, req)
 	}
 
@@ -639,7 +639,7 @@ func (q *cachedQueueReader) GetTask(ctx context.Context, req *GetTaskRequest) (*
 	if !covered {
 		q.mu.RUnlock()
 		q.metrics.IncCounter(metrics.CachedQueueMissesCounter)
-		q.logger.Debug("cache miss", logTags...)
+		q.logger.Info("cache miss", logTags...)
 		return q.base.GetTask(ctx, req)
 	}
 
@@ -647,7 +647,7 @@ func (q *cachedQueueReader) GetTask(ctx context.Context, req *GetTaskRequest) (*
 	q.mu.RUnlock()
 
 	q.metrics.IncCounter(metrics.CachedQueueHitsCounter)
-	q.logger.Debug("cache hit", logTags...)
+	q.logger.Info("cache hit", logTags...)
 
 	if q.isShadow() {
 		return q.getTaskInShadow(ctx, req, cacheResp, inclusiveLowerBound, logTags)
@@ -703,7 +703,7 @@ func (q *cachedQueueReader) reportShadowComparison(
 	logTags []tag.Tag,
 ) {
 	if !result.HasMismatches {
-		q.logger.Debug("shadow comparison matched")
+		q.logger.Info("shadow comparison matched")
 		return
 	}
 
@@ -803,7 +803,7 @@ func findMismatchesInShadow(
 // cache when disabled or in shadow mode.
 func (q *cachedQueueReader) LookAHead(ctx context.Context, req *LookAHeadRequest) (*LookAHeadResponse, error) {
 	if q.isDisabled() || q.isShadow() || q.isInWarmup() {
-		q.logger.Debug("fail back to original look-ahead, cache is disabled, shadow mode or in warmup")
+		q.logger.Info("fail back to original look-ahead, cache is disabled, shadow mode or in warmup")
 		return q.base.LookAHead(ctx, req)
 	}
 
@@ -829,7 +829,7 @@ func (q *cachedQueueReader) LookAHead(ctx context.Context, req *LookAHeadRequest
 	q.mu.RUnlock()
 
 	if covered {
-		q.logger.Debug("look-ahead cache hit",
+		q.logger.Info("look-ahead cache hit",
 			tag.Dynamic("inclusiveMinTaskKey", req.InclusiveMinTaskKey),
 			tag.Dynamic("exclusiveUpperBound", exclusiveUpperBound),
 			tag.Dynamic("taskFound", cacheTask != nil),
@@ -840,7 +840,7 @@ func (q *cachedQueueReader) LookAHead(ctx context.Context, req *LookAHeadRequest
 		}, nil
 	}
 
-	q.logger.Debug("look-ahead cache miss",
+	q.logger.Info("look-ahead cache miss",
 		tag.Dynamic("inclusiveMinTaskKey", req.InclusiveMinTaskKey),
 		tag.Dynamic("exclusiveUpperBound", exclusiveUpperBound),
 	)
