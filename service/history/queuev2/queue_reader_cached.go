@@ -360,17 +360,17 @@ func (q *cachedQueueReader) prefetch() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Upper bound changed while we held the lock, so another goroutine reset
-	// the cache. The fetched tasks may not be contiguous with the new window.
-	// Clear everything and start fresh.
+	// Upper bound changed while we held the lock (e.g. a concurrent Inject
+	// triggered RTrimBySize, shrinking the window). The fetched tasks start at
+	// the old upperBound, which is now beyond the current window end, so they
+	// cannot be inserted contiguously. Discard only the fetched data; the
+	// existing cache remains valid for [inclusiveLowerBound, exclusiveUpperBound).
+	// The next prefetch will fill the gap from the new exclusiveUpperBound.
 	if !q.exclusiveUpperBound.Equal(upperBound) {
-		q.logger.Info("gap detected, clearing cache",
+		q.logger.Info("gap detected, discarding fetched data",
 			tag.Dynamic("prevUpper", upperBound),
 			tag.Dynamic("newUpper", q.exclusiveUpperBound),
 		)
-		q.queue.Clear()
-		q.updateExclusiveUpperBound(persistence.MinimumHistoryTaskKey)
-		q.updateInclusiveLowerBound(persistence.MinimumHistoryTaskKey)
 		return fmt.Errorf("gap detected: upper bound changed during fetch")
 	}
 

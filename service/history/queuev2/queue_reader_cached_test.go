@@ -1670,8 +1670,11 @@ func TestCachedQueueReader_PrefetchGapDetected(t *testing.T) {
 
 	result := r.prefetch()
 	assert.Error(t, result)
-	assert.Equal(t, 0, r.queue.Len(), "cache should be cleared")
-	assert.Equal(t, persistence.MinimumHistoryTaskKey, r.exclusiveUpperBound)
+	// Cache is NOT cleared: existing tasks (none seeded here) are preserved.
+	assert.Equal(t, 0, r.queue.Len(), "empty cache stays empty on gap detection")
+	// Upper bound stays at the concurrently-set value, not reset to MinimumHistoryTaskKey.
+	assert.Equal(t, persistence.NewHistoryTaskKey(now.Add(30*time.Second), 0), r.exclusiveUpperBound,
+		"gap detection preserves the upper bound set by the concurrent operation")
 }
 
 func TestCachedQueueReader_NextPrefetchDelay(t *testing.T) {
@@ -2558,7 +2561,7 @@ func TestCachedQueueReader_Lifecycle_GapDetectionAndRecovery(t *testing.T) {
 	r.mu.Unlock()
 	close(p1Unblock)
 
-	<-p1Done         // gap detected, cache cleared, error returned
+	<-p1Done         // gap detected, fetched data discarded, error returned
 	ts.BlockUntil(2) // wait for prefetch loop to re-arm at MinPrefetchInterval
 
 	awaitPrefetch(ts, 500*time.Millisecond, p2)
