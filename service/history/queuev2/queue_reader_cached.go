@@ -89,6 +89,18 @@ type cachedQueueReader struct {
 	// Always update via updateExclusiveUpperBound to keep the prefetch loop in sync.
 	exclusiveUpperBound persistence.HistoryTaskKey
 
+	// prefetchTargetUpper is the exclusive upper bound the current in-flight prefetch
+	// is aiming to reach. Set to exclusiveMaxKey under mu.Lock immediately before the
+	// DB call; cleared to MinimumHistoryTaskKey after the DB call completes. Zero
+	// value (MinimumHistoryTaskKey) means no prefetch is in-flight.
+	prefetchTargetUpper persistence.HistoryTaskKey
+
+	// pendingInjectBuffer accumulates tasks arriving via Inject while a prefetch
+	// DB call is in-flight and whose key falls in [exclusiveUpperBound, prefetchTargetUpper).
+	// Drained into the in-memory queue after the prefetch completes or fails.
+	// Guarded by mu.
+	pendingInjectBuffer []persistence.Task
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup

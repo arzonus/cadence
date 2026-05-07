@@ -1944,6 +1944,103 @@ func TestCachedQueueReader_ConcurrentPrefetchAndInject(t *testing.T) {
 	wg.Wait()
 }
 
+// TestCachedQueueReader_InjectDuringPrefetch_Buffered verifies that a task
+// injected while a prefetch DB call is in-flight — and therefore rejected by
+// isTaskCovered because exclusiveUpperBound has not yet advanced — is buffered
+// and drained into the cache after the prefetch extends the window.
+func TestCachedQueueReader_InjectDuringPrefetch_Buffered(t *testing.T) {
+	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	ts := clock.NewMockedTimeSourceAt(now)
+	ctrl := gomock.NewController(t)
+	base := NewMockQueueReader(ctrl)
+	queue := newInMemQueue()
+
+	opts := defaultTestOptions()
+	opts.MaxLookAheadWindow = dynamicproperties.GetDurationPropertyFn(5 * time.Minute)
+	opts.EvictionSafeWindow = dynamicproperties.GetDurationPropertyFn(1 * time.Minute)
+	opts.Mode = dynamicproperties.GetStringPropertyFn("enabled")
+
+	r := newCachedQueueReaderWithOptions(base, queue, opts, ts, testlogger.New(t), metrics.NoopScope)
+	r.injectAllowedAfter = now.Add(-time.Minute) // past warmup
+
+	// Task that arrives via Inject during the DB call.
+	// Its scheduledTime falls in (exclusiveUpperBound=Min, prefetchTargetUpper=now+5m).
+	// The DB does NOT return it (simulating: committed to Cassandra after the DB snapshot).
+	injectedTask := newTestTask(now.Add(2*time.Minute), 42)
+
+	base.EXPECT().GetTask(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *GetTaskRequest) (*GetTaskResponse, error) {
+			// Inject fires mid-flight, before exclusiveUpperBound is advanced.
+			r.Inject([]persistence.Task{injectedTask})
+			return &GetTaskResponse{
+				Tasks: nil,
+				Progress: &GetTaskProgress{
+					NextTaskKey: persistence.NewHistoryTaskKey(now.Add(5*time.Minute), 0),
+				},
+			}, nil
+		},
+	)
+
+	err := r.prefetch()
+	require.NoError(t, err)
+
+	// The task must be in cache after the buffer drain.
+	assert.Equal(t, 1, r.queue.Len(),
+		"task injected during prefetch DB call must be in cache after drain")
+
+	// Confirm GetTasks finds it in the expected range.
+	cacheResp := r.queue.GetTasks(&GetTaskRequest{
+		Progress: &GetTaskProgress{
+			Range: Range{
+				InclusiveMinTaskKey: persistence.NewHistoryTaskKey(now.Add(1*time.Minute), 0),
+				ExclusiveMaxTaskKey: persistence.NewHistoryTaskKey(now.Add(3*time.Minute), 0),
+			},
+			NextTaskKey: persistence.NewHistoryTaskKey(now.Add(1*time.Minute), 0),
+		},
+		Predicate: NewUniversalPredicate(),
+		PageSize:  10,
+	})
+	require.Len(t, cacheResp.Tasks, 1, "injected task must be returned by GetTasks")
+	assert.Equal(t, injectedTask.GetTaskID(), cacheResp.Tasks[0].GetTaskID())
+}
+
+// TestCachedQueueReader_InjectDuringPrefetch_OutsideTarget verifies that tasks
+// whose scheduledTime is beyond prefetchTargetUpper are still skipped (not buffered).
+func TestCachedQueueReader_InjectDuringPrefetch_OutsideTarget(t *testing.T) {
+	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	ts := clock.NewMockedTimeSourceAt(now)
+	ctrl := gomock.NewController(t)
+	base := NewMockQueueReader(ctrl)
+	queue := newInMemQueue()
+
+	opts := defaultTestOptions()
+	opts.MaxLookAheadWindow = dynamicproperties.GetDurationPropertyFn(5 * time.Minute)
+	opts.EvictionSafeWindow = dynamicproperties.GetDurationPropertyFn(1 * time.Minute)
+	opts.Mode = dynamicproperties.GetStringPropertyFn("enabled")
+
+	r := newCachedQueueReaderWithOptions(base, queue, opts, ts, testlogger.New(t), metrics.NoopScope)
+	r.injectAllowedAfter = now.Add(-time.Minute)
+
+	// Task beyond the prefetch target (now+5m) — must be skipped, not buffered.
+	farFutureTask := newTestTask(now.Add(10*time.Minute), 99)
+
+	base.EXPECT().GetTask(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *GetTaskRequest) (*GetTaskResponse, error) {
+			r.Inject([]persistence.Task{farFutureTask})
+			return &GetTaskResponse{
+				Tasks: nil,
+				Progress: &GetTaskProgress{
+					NextTaskKey: persistence.NewHistoryTaskKey(now.Add(5*time.Minute), 0),
+				},
+			}, nil
+		},
+	)
+
+	err := r.prefetch()
+	require.NoError(t, err)
+	assert.Equal(t, 0, r.queue.Len(), "task beyond prefetchTargetUpper must not be buffered")
+}
+
 func TestCachedQueueReader_TimeEvictLoop(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
