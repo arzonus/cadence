@@ -35,7 +35,7 @@ import (
 // testTask is a minimal persistence.Task for testing InMemQueue.
 // It uses DeleteHistoryEventTask because it's a timer task that uses
 // NewHistoryTaskKey(VisibilityTimestamp, TaskID) for its task key.
-func newTestTask(scheduledTime time.Time, taskID int64) persistence.Task {
+func newTask(scheduledTime time.Time, taskID int64) persistence.Task {
 	return &persistence.DeleteHistoryEventTask{
 		WorkflowIdentifier: persistence.WorkflowIdentifier{
 			DomainID:   "test-domain",
@@ -60,65 +60,65 @@ func TestInMemQueue_putTask(t *testing.T) {
 		{
 			name:        "insert into empty queue",
 			existing:    nil,
-			insert:      newTestTask(time.Unix(10, 0), 1),
+			insert:      newTask(time.Unix(10, 0), 1),
 			wantLen:     1,
 			wantTaskIDs: []int64{1},
 		},
 		{
 			name: "insert maintains sorted order - earlier task after later one",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(20, 0), 2),
 			},
-			insert:      newTestTask(time.Unix(10, 0), 1),
+			insert:      newTask(time.Unix(10, 0), 1),
 			wantLen:     2,
 			wantTaskIDs: []int64{1, 2},
 		},
 		{
 			name: "duplicate key is skipped",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(10, 0), 1),
 			},
-			insert:      newTestTask(time.Unix(10, 0), 1),
+			insert:      newTask(time.Unix(10, 0), 1),
 			wantLen:     1,
 			wantTaskIDs: []int64{1},
 		},
 		{
 			name: "insert at beginning",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(20, 0), 2),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(30, 0), 3),
 			},
-			insert:      newTestTask(time.Unix(10, 0), 1),
+			insert:      newTask(time.Unix(10, 0), 1),
 			wantLen:     3,
 			wantTaskIDs: []int64{1, 2, 3},
 		},
 		{
 			name: "insert at middle",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(30, 0), 3),
 			},
-			insert:      newTestTask(time.Unix(20, 0), 2),
+			insert:      newTask(time.Unix(20, 0), 2),
 			wantLen:     3,
 			wantTaskIDs: []int64{1, 2, 3},
 		},
 		{
 			name: "insert at end",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
-			insert:      newTestTask(time.Unix(30, 0), 3),
+			insert:      newTask(time.Unix(30, 0), 3),
 			wantLen:     3,
 			wantTaskIDs: []int64{1, 2, 3},
 		},
 		{
 			name: "same time different task IDs - sorted by task ID",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(10, 0), 3),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(10, 0), 3),
 			},
-			insert:      newTestTask(time.Unix(10, 0), 2),
+			insert:      newTask(time.Unix(10, 0), 2),
 			wantLen:     3,
 			wantTaskIDs: []int64{1, 2, 3},
 		},
@@ -153,9 +153,9 @@ func TestInMemQueue_PutTasks(t *testing.T) {
 			name:     "insert multiple tasks into empty queue",
 			existing: nil,
 			insert: []persistence.Task{
-				newTestTask(time.Unix(30, 0), 3),
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			wantLen:     3,
 			wantTaskIDs: []int64{1, 2, 3},
@@ -163,13 +163,13 @@ func TestInMemQueue_PutTasks(t *testing.T) {
 		{
 			name: "deduplication - tasks with existing keys are skipped",
 			existing: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(30, 0), 3),
 			},
 			insert: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1), // duplicate
-				newTestTask(time.Unix(20, 0), 2), // new
-				newTestTask(time.Unix(30, 0), 3), // duplicate
+				newTask(time.Unix(10, 0), 1), // duplicate
+				newTask(time.Unix(20, 0), 2), // new
+				newTask(time.Unix(30, 0), 3), // duplicate
 			},
 			wantLen:     3,
 			wantTaskIDs: []int64{1, 2, 3},
@@ -208,8 +208,8 @@ func TestInMemQueue_LookAHead(t *testing.T) {
 		{
 			name: "key matches existing task",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			minTaskKey: persistence.NewHistoryTaskKey(time.Unix(10, 0), 1),
 			wantTaskID: 1,
@@ -217,8 +217,8 @@ func TestInMemQueue_LookAHead(t *testing.T) {
 		{
 			name: "key between tasks returns first task at-or-after key",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(30, 0), 3),
 			},
 			minTaskKey: persistence.NewHistoryTaskKey(time.Unix(20, 0), 2),
 			wantTaskID: 3,
@@ -226,16 +226,16 @@ func TestInMemQueue_LookAHead(t *testing.T) {
 		{
 			name: "key after all tasks returns nil",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			minTaskKey: persistence.NewHistoryTaskKey(time.Unix(30, 0), 3),
 		},
 		{
 			name: "key before all tasks returns first task",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(20, 0), 2),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(30, 0), 3),
 			},
 			minTaskKey: persistence.NewHistoryTaskKey(time.Unix(10, 0), 1),
 			wantTaskID: 2,
@@ -261,11 +261,11 @@ func TestInMemQueue_LookAHead(t *testing.T) {
 
 func TestInMemQueue_GetTasks(t *testing.T) {
 	allTasks := []persistence.Task{
-		newTestTask(time.Unix(10, 0), 1),
-		newTestTask(time.Unix(20, 0), 2),
-		newTestTask(time.Unix(30, 0), 3),
-		newTestTask(time.Unix(40, 0), 4),
-		newTestTask(time.Unix(50, 0), 5),
+		newTask(time.Unix(10, 0), 1),
+		newTask(time.Unix(20, 0), 2),
+		newTask(time.Unix(30, 0), 3),
+		newTask(time.Unix(40, 0), 4),
+		newTask(time.Unix(50, 0), 5),
 	}
 
 	tests := []struct {
@@ -346,7 +346,7 @@ func TestInMemQueue_GetTasks(t *testing.T) {
 			predicate:    NewUniversalPredicate(),
 			pageSize:     2,
 			wantTaskIDs:  []int64{1, 2},
-			wantNextKey:  newTestTask(time.Unix(30, 0), 3).GetTaskKey(),
+			wantNextKey:  newTask(time.Unix(30, 0), 3).GetTaskKey(),
 		},
 	}
 
@@ -378,9 +378,9 @@ func TestInMemQueue_LTrim(t *testing.T) {
 		{
 			name: "trim removes tasks before key",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(30, 0), 3),
 			},
 			trimKey:     persistence.NewHistoryTaskKey(time.Unix(20, 0), 2),
 			wantLen:     2,
@@ -389,8 +389,8 @@ func TestInMemQueue_LTrim(t *testing.T) {
 		{
 			name: "task at key is retained",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			trimKey:     persistence.NewHistoryTaskKey(time.Unix(20, 0), 2),
 			wantLen:     1,
@@ -399,8 +399,8 @@ func TestInMemQueue_LTrim(t *testing.T) {
 		{
 			name: "trim with key before first task is no-op",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(20, 0), 2),
-				newTestTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(30, 0), 3),
 			},
 			trimKey:     persistence.NewHistoryTaskKey(time.Unix(10, 0), 1),
 			wantLen:     2,
@@ -409,8 +409,8 @@ func TestInMemQueue_LTrim(t *testing.T) {
 		{
 			name: "trim with key after all tasks empties queue",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			trimKey:     persistence.NewHistoryTaskKey(time.Unix(30, 0), 3),
 			wantLen:     0,
@@ -455,39 +455,39 @@ func TestInMemQueue_RTrimBySize(t *testing.T) {
 		{
 			name: "queue larger than maxSize - truncated",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
-				newTestTask(time.Unix(30, 0), 3),
-				newTestTask(time.Unix(40, 0), 4),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(30, 0), 3),
+				newTask(time.Unix(40, 0), 4),
 			},
 			maxSize:     2,
 			wantLen:     2,
 			wantTaskIDs: []int64{1, 2},
-			wantKey:     newTestTask(time.Unix(20, 0), 2).GetTaskKey().Next(),
+			wantKey:     newTask(time.Unix(20, 0), 2).GetTaskKey().Next(),
 			wantTrimmed: true,
 		},
 		{
 			name: "queue smaller than maxSize - no-op",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			maxSize:     5,
 			wantLen:     2,
 			wantTaskIDs: []int64{1, 2},
-			wantKey:     newTestTask(time.Unix(20, 0), 2).GetTaskKey().Next(),
+			wantKey:     newTask(time.Unix(20, 0), 2).GetTaskKey().Next(),
 			wantTrimmed: false,
 		},
 		{
 			name: "queue exactly maxSize - no-op",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			maxSize:     2,
 			wantLen:     2,
 			wantTaskIDs: []int64{1, 2},
-			wantKey:     newTestTask(time.Unix(20, 0), 2).GetTaskKey().Next(),
+			wantKey:     newTask(time.Unix(20, 0), 2).GetTaskKey().Next(),
 			wantTrimmed: false,
 		},
 		{
@@ -502,8 +502,8 @@ func TestInMemQueue_RTrimBySize(t *testing.T) {
 		{
 			name: "maxSize 0 empties queue",
 			tasks: []persistence.Task{
-				newTestTask(time.Unix(10, 0), 1),
-				newTestTask(time.Unix(20, 0), 2),
+				newTask(time.Unix(10, 0), 1),
+				newTask(time.Unix(20, 0), 2),
 			},
 			maxSize:     0,
 			wantLen:     0,
@@ -536,8 +536,8 @@ func TestInMemQueue_Len(t *testing.T) {
 	q := newInMemQueue()
 	assert.Equal(t, 0, q.Len())
 
-	q.putTask(newTestTask(time.Unix(10, 0), 1))
-	q.putTask(newTestTask(time.Unix(20, 0), 2))
+	q.putTask(newTask(time.Unix(10, 0), 1))
+	q.putTask(newTask(time.Unix(20, 0), 2))
 	assert.Equal(t, 2, q.Len())
 
 	q.LTrim(persistence.NewHistoryTaskKey(time.Unix(20, 0), 2))
@@ -547,8 +547,8 @@ func TestInMemQueue_Len(t *testing.T) {
 func TestInMemQueue_Clear(t *testing.T) {
 	q := newInMemQueue()
 	q.PutTasks([]persistence.Task{
-		newTestTask(time.Unix(10, 0), 1),
-		newTestTask(time.Unix(20, 0), 2),
+		newTask(time.Unix(10, 0), 1),
+		newTask(time.Unix(20, 0), 2),
 	})
 	assert.Equal(t, 2, q.Len())
 
@@ -562,9 +562,9 @@ func TestInMemQueue_Clear(t *testing.T) {
 func TestInMemQueue_RTrimBySize_NilsTail(t *testing.T) {
 	q := newInMemQueue()
 	q.PutTasks([]persistence.Task{
-		newTestTask(time.Unix(1, 0), 1),
-		newTestTask(time.Unix(2, 0), 2),
-		newTestTask(time.Unix(3, 0), 3),
+		newTask(time.Unix(1, 0), 1),
+		newTask(time.Unix(2, 0), 2),
+		newTask(time.Unix(3, 0), 3),
 	})
 	// Grow the backing array so we can inspect it after trimming.
 	cap0 := cap(q.tasks)
@@ -586,9 +586,9 @@ func TestInMemQueue_PutTasks_AppendFastPath(t *testing.T) {
 	q := newInMemQueue()
 	// Insert tasks in ascending order — all should use fast path.
 	tasks := []persistence.Task{
-		newTestTask(time.Unix(10, 0), 1),
-		newTestTask(time.Unix(20, 0), 2),
-		newTestTask(time.Unix(30, 0), 3),
+		newTask(time.Unix(10, 0), 1),
+		newTask(time.Unix(20, 0), 2),
+		newTask(time.Unix(30, 0), 3),
 	}
 	q.PutTasks(tasks)
 
