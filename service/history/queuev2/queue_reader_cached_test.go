@@ -242,6 +242,8 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 	tests := []struct {
 		name               string
 		tasks              []persistence.Task
+		initLower          persistence.HistoryTaskKey
+		initUpper          persistence.HistoryTaskKey
 		initPrefetchTarget persistence.HistoryTaskKey
 		optsOverride       func(*cachedQueueReaderOptions)
 		setupMocks         func(queue *MockInMemQueue)
@@ -249,17 +251,33 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 		wantBufferLen      int
 	}{
 		{
-			name:  "disabled skips all",
+			name:      "disabled clears stale cache",
+			tasks:     []persistence.Task{inside},
+			initLower: lower,
+			initUpper: upper,
+			optsOverride: func(o *cachedQueueReaderOptions) {
+				o.Mode = dynamicproperties.GetStringPropertyFn("disabled")
+			},
+			setupMocks: func(queue *MockInMemQueue) {
+				queue.EXPECT().Clear()
+				queue.EXPECT().Len().Return(0).AnyTimes()
+			},
+			wantUpper: persistence.MinimumHistoryTaskKey,
+		},
+		{
+			name:  "disabled with no cached data is no-op",
 			tasks: []persistence.Task{inside},
 			optsOverride: func(o *cachedQueueReaderOptions) {
 				o.Mode = dynamicproperties.GetStringPropertyFn("disabled")
 			},
 			setupMocks: func(*MockInMemQueue) {},
-			wantUpper:  upper,
+			wantUpper:  persistence.MinimumHistoryTaskKey,
 		},
 		{
-			name:  "task inside window accepted",
-			tasks: []persistence.Task{inside},
+			name:      "task inside window accepted",
+			tasks:     []persistence.Task{inside},
+			initLower: lower,
+			initUpper: upper,
 			setupMocks: func(queue *MockInMemQueue) {
 				queue.EXPECT().Len().Return(0).AnyTimes()
 				queue.EXPECT().PutTasks([]persistence.Task{inside})
@@ -268,24 +286,30 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 			wantUpper: upper,
 		},
 		{
-			name:  "task before lower skipped",
-			tasks: []persistence.Task{before},
+			name:      "task before lower skipped",
+			tasks:     []persistence.Task{before},
+			initLower: lower,
+			initUpper: upper,
 			setupMocks: func(queue *MockInMemQueue) {
 				queue.EXPECT().Len().Return(0).AnyTimes()
 			},
 			wantUpper: upper,
 		},
 		{
-			name:  "task at upper bound (exclusive) skipped",
-			tasks: []persistence.Task{atUpper},
+			name:      "task at upper bound (exclusive) skipped",
+			tasks:     []persistence.Task{atUpper},
+			initLower: lower,
+			initUpper: upper,
 			setupMocks: func(queue *MockInMemQueue) {
 				queue.EXPECT().Len().Return(0).AnyTimes()
 			},
 			wantUpper: upper,
 		},
 		{
-			name:  "mixed: only inside accepted",
-			tasks: []persistence.Task{inside, before, atUpper},
+			name:      "mixed: only inside accepted",
+			tasks:     []persistence.Task{inside, before, atUpper},
+			initLower: lower,
+			initUpper: upper,
 			setupMocks: func(queue *MockInMemQueue) {
 				queue.EXPECT().Len().Return(0).AnyTimes()
 				queue.EXPECT().PutTasks([]persistence.Task{inside})
@@ -297,13 +321,17 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 			// putTasks short-circuits on empty slice, so no queue calls expected.
 			name:       "task with ID=0 skipped",
 			tasks:      []persistence.Task{zeroID},
+			initLower:  lower,
+			initUpper:  upper,
 			setupMocks: func(*MockInMemQueue) {},
 			wantUpper:  upper,
 		},
 		{
 			// RTrimBySize fires and the upper bound must shrink to the trim key.
-			name:  "trims when over capacity: upper bound updated",
-			tasks: []persistence.Task{inside},
+			name:      "trims when over capacity: upper bound updated",
+			tasks:     []persistence.Task{inside},
+			initLower: lower,
+			initUpper: upper,
 			optsOverride: func(o *cachedQueueReaderOptions) {
 				o.MaxSize = dynamicproperties.GetIntPropertyFn(1)
 			},
@@ -317,6 +345,8 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 		{
 			name:               "task in [upper, prefetchTarget) buffered when prefetch in-flight",
 			tasks:              []persistence.Task{inBuffer},
+			initLower:          lower,
+			initUpper:          upper,
 			initPrefetchTarget: prefetchTarget,
 			setupMocks: func(queue *MockInMemQueue) {
 				queue.EXPECT().Len().Return(0).AnyTimes()
@@ -327,6 +357,8 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 		{
 			name:               "task beyond prefetchTarget dropped even when prefetch in-flight",
 			tasks:              []persistence.Task{beyondTarget},
+			initLower:          lower,
+			initUpper:          upper,
 			initPrefetchTarget: prefetchTarget,
 			setupMocks: func(queue *MockInMemQueue) {
 				queue.EXPECT().Len().Return(0).AnyTimes()
@@ -337,6 +369,8 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 		{
 			name:               "task with ID=0 not buffered even when prefetch in-flight",
 			tasks:              []persistence.Task{zeroID},
+			initLower:          lower,
+			initUpper:          upper,
 			initPrefetchTarget: prefetchTarget,
 			setupMocks:         func(*MockInMemQueue) {},
 			wantUpper:          upper,
@@ -348,7 +382,7 @@ func TestCachedQueueReader_Inject(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			r, deps := setupMocksForCachedQueueReader(t, ctrl, tc.optsOverride)
 			queue := deps.mockQueue
-			setBounds(r, lower, upper)
+			setBounds(r, tc.initLower, tc.initUpper)
 			if !tc.initPrefetchTarget.Equal(persistence.MinimumHistoryTaskKey) {
 				r.mu.Lock()
 				r.prefetchTargetUpper = tc.initPrefetchTarget
@@ -1485,6 +1519,25 @@ func TestCachedQueueReader_Prefetch(t *testing.T) {
 			},
 			wantLower: someLower,
 			wantUpper: maxKey,
+		},
+		{
+			name:      "mode switched to disabled during in-flight fetch discards results",
+			initLower: someLower,
+			initUpper: someUpper,
+			setupMocks: func(base *MockQueueReader, queue *MockInMemQueue, r *cachedQueueReader) {
+				queue.EXPECT().Len().Return(0).AnyTimes()
+				base.EXPECT().GetTask(gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ *GetTaskRequest) (*GetTaskResponse, error) {
+						r.options.Mode = dynamicproperties.GetStringPropertyFn("disabled")
+						return &GetTaskResponse{
+							Tasks:    []persistence.Task{t1, t2},
+							Progress: &GetTaskProgress{NextTaskKey: maxKey},
+						}, nil
+					},
+				)
+			},
+			wantLower: someLower,
+			wantUpper: someUpper,
 		},
 	}
 

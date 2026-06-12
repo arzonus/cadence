@@ -292,6 +292,18 @@ func (q *cachedQueueReader) isDisabled() bool {
 	return isCachedQueueReaderDisabled(q.options.Mode())
 }
 
+// clearIfDisabled clears cached state when mode is disabled and cache has data.
+// Without this, stale boundaries and tasks survive a disabled→shadow/enabled
+// transition and cause shadow comparison mismatches.
+func (q *cachedQueueReader) clearIfDisabled() {
+	q.mu.RLock()
+	hasData := !q.exclusiveUpperBound.Equal(persistence.MinimumHistoryTaskKey)
+	q.mu.RUnlock()
+	if hasData {
+		q.Clear()
+	}
+}
+
 // Clear wipes all cached state and triggers a fresh prefetch from the DB.
 func (q *cachedQueueReader) Clear() {
 	q.mu.Lock()
@@ -374,6 +386,11 @@ func (q *cachedQueueReader) prefetch() error {
 	if err != nil {
 		q.logger.Error("prefetch failed", tag.Error(err))
 		return fmt.Errorf("prefetch failed: %w", err)
+	}
+
+	if q.isDisabled() {
+		q.logger.Debug("prefetch result discarded, mode switched to disabled during fetch")
+		return nil
 	}
 
 	// Upper bound changed while we held the lock (e.g. a concurrent Inject
@@ -566,6 +583,7 @@ func (q *cachedQueueReader) UpdateReadLevel(readLevel persistence.HistoryTaskKey
 // tasks are dropped. No-op when the cache is off.
 func (q *cachedQueueReader) Inject(tasks []persistence.Task) {
 	if q.isDisabled() {
+		q.clearIfDisabled()
 		return
 	}
 
