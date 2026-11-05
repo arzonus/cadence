@@ -454,7 +454,7 @@ func (s *IntegrationSuite) TestWarmStorage_FlagOffAfterMove_SLOW() {
 	run2 := s.warmStart(id2, nil)
 	s.warmDecide(id2, "bin-1", completeD())
 	s.warmWaitHot(id2, run2)
-	// master behaviour (hot closed run) and warm run must answer late writes with the same error type
+	// a hot closed run and a warm run must answer late writes with the same error type
 	hotSig, hotTerm := s.warmLateWrites(id2, run2)
 	warmSig, warmTerm := s.warmLateWrites(id, run)
 	s.IsType(hotSig, warmSig)

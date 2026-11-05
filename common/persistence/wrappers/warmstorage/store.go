@@ -38,7 +38,8 @@ var sentinelKey = persistence.ClosedExecutionKey{
 
 const (
 	sentinelProbeTimeout = 5 * time.Second
-	// a host that started before the cluster's first move, or whose startup probe failed, finds out this way
+	// how often a host re-reads the sentinel, so one that started before the cluster's first move, or whose
+	// startup probe failed, still learns that Warm rows exist
 	sentinelReprobeInterval = time.Minute
 )
 
