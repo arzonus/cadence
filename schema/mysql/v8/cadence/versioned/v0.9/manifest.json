@@ -1,0 +1,8 @@
+{
+  "CurrVersion": "0.9",
+  "MinCompatibleVersion": "0.9",
+  "Description": "Add closed_executions table for warm storage of closed workflow runs",
+  "SchemaUpdateCqlFiles": [
+    "closed_executions.sql"
+  ]
+}
