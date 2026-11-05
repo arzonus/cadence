@@ -348,7 +348,17 @@ func (s *IntegrationSuite) TestWarmStorage_DescribeResetReuse_SLOW() {
 	s.warmDecide(id, "bin-1", completeD())
 	s.warmWaitMoved(id, run)
 
+	// closing the shard evicts the history cache, so Describe reads the slim row
+	shard := int32(common.WorkflowIDToHistoryShard(id, s.TestClusterConfig.HistoryConfig.NumHistoryShards))
+	s.NoError(s.HistoryClient.CloseShard(ctx, &types.CloseShardRequest{ShardID: shard}))
+	time.Sleep(time.Second)
 	after := s.warmDescribe(id, run).WorkflowExecutionInfo
+	// CreatedTimeNano is replay time by design (see describe_rebuild_reset_points.go), so compare the rest
+	s.Len(after.AutoResetPoints.Points, len(before.AutoResetPoints.Points))
+	for i, p := range after.AutoResetPoints.Points {
+		s.NotNil(p.CreatedTimeNano)
+		p.CreatedTimeNano = before.AutoResetPoints.Points[i].CreatedTimeNano
+	}
 	s.Equal(before.AutoResetPoints, after.AutoResetPoints, "reset points rebuilt from history must equal the pre-close ones")
 	s.Equal(before.Memo, after.Memo)
 	s.Equal(types.WorkflowExecutionCloseStatusCompleted, *after.CloseStatus)
