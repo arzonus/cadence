@@ -22,6 +22,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -626,6 +627,59 @@ func (s *transferStandbyTaskExecutorSuite) TestProcessCloseExecution() {
 	s.mockShard.SetCurrentTime(s.clusterName, now)
 	_, err = s.transferStandbyTaskExecutor.Execute(transferTask)
 	s.Nil(err)
+}
+
+func (s *transferStandbyTaskExecutorSuite) TestProcessCloseExecution_WarmStorage() {
+	errMove := errors.New("move failed")
+	errViz := errors.New("visibility failed")
+	for _, tc := range []struct {
+		name    string
+		flagOn  bool
+		vizErr  error
+		moveErr error
+		moves   int
+		wantErr error
+	}{
+		{name: "flag off", moves: 0},
+		{name: "flag on", flagOn: true, moves: 1},
+		{name: "flag on, visibility fails", flagOn: true, vizErr: errViz, moves: 0, wantErr: errViz},
+		{name: "flag on, move fails", flagOn: true, moveErr: errMove, moves: 1, wantErr: errMove},
+	} {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			defer s.TearDownTest()
+			workflowExecution, mutableState, decisionCompletionID, err := test.SetupWorkflowWithCompletedDecision(s.T(), s.mockShard, s.domainID)
+			s.NoError(err)
+			event := test.AddCompleteWorkflowEvent(mutableState, decisionCompletionID, nil)
+			now := time.Now()
+			transferTask := s.newTransferTaskFromInfo(&persistence.CloseExecutionTask{
+				WorkflowIdentifier: persistence.WorkflowIdentifier{
+					DomainID:   s.domainID,
+					WorkflowID: workflowExecution.GetWorkflowID(),
+					RunID:      workflowExecution.GetRunID(),
+				},
+				TaskData: persistence.TaskData{Version: s.version, VisibilityTimestamp: now, TaskID: int64(59)},
+			})
+			persistenceMutableState, err := test.CreatePersistenceMutableState(s.T(), mutableState, event.ID, event.Version)
+			s.NoError(err)
+			s.mockExecutionMgr.On("GetWorkflowExecution", mock.Anything, mock.Anything).Return(&persistence.GetWorkflowExecutionResponse{State: persistenceMutableState}, nil)
+			s.mockVisibilityMgr.On("RecordWorkflowExecutionClosed", mock.Anything, mock.Anything).Return(tc.vizErr).Once()
+			s.mockArchivalMetadata.On("GetVisibilityConfig").Return(archiver.NewDisabledArchvialConfig())
+			s.mockShard.GetConfig().EnableWarmStorage = func(string) bool { return tc.flagOn }
+			if tc.moves > 0 {
+				s.mockExecutionMgr.On("MoveToClosedExecutions", mock.Anything, &persistence.DeleteWorkflowExecutionRequest{
+					DomainID:   s.domainID,
+					WorkflowID: workflowExecution.GetWorkflowID(),
+					RunID:      workflowExecution.GetRunID(),
+					ShardID:    common.Ptr(s.mockShard.GetShardID()),
+				}).Return(tc.moveErr).Once()
+			}
+			s.mockShard.SetCurrentTime(s.clusterName, now)
+			_, err = s.transferStandbyTaskExecutor.Execute(transferTask)
+			s.Equal(tc.wantErr, err)
+			s.mockExecutionMgr.AssertNumberOfCalls(s.T(), "MoveToClosedExecutions", tc.moves)
+		})
+	}
 }
 
 func (s *transferStandbyTaskExecutorSuite) TestProcessRecordWorkflowClosedTask() {

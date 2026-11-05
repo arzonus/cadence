@@ -355,7 +355,7 @@ func (t *transferStandbyTaskExecutor) processCloseExecution(
 		)
 	}
 
-	return t.processTransfer(
+	err := t.processTransfer(
 		ctx,
 		processTaskIfClosed,
 		transferTask,
@@ -363,6 +363,16 @@ func (t *transferStandbyTaskExecutor) processCloseExecution(
 		actionFn,
 		standbyTaskPostActionNoOp,
 	) // no op post action, since the entire workflow is finished
+	if err != nil || !t.config.EnableWarmStorage(transferTask.DomainID) {
+		return err
+	}
+	// also reached when the run isn't closed here yet; the decorator skips non-completed runs
+	return t.shard.GetExecutionManager().MoveToClosedExecutions(ctx, &persistence.DeleteWorkflowExecutionRequest{
+		DomainID:   transferTask.DomainID,
+		WorkflowID: transferTask.WorkflowID,
+		RunID:      transferTask.RunID,
+		ShardID:    common.Ptr(t.shard.GetShardID()),
+	})
 }
 
 func (t *transferStandbyTaskExecutor) processCancelExecution(

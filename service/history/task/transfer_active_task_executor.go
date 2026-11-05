@@ -356,7 +356,16 @@ func (t *transferActiveTaskExecutor) processCloseExecution(
 	ctx context.Context,
 	task *persistence.CloseExecutionTask,
 ) error {
-	return t.processCloseExecutionTaskHelper(ctx, task, true, true, true)
+	if err := t.processCloseExecutionTaskHelper(ctx, task, true, true, true); err != nil || !t.config.EnableWarmStorage(task.DomainID) {
+		return err
+	}
+	// last step: visibility, parent reply and child policy above still need the full row
+	return t.shard.GetExecutionManager().MoveToClosedExecutions(ctx, &persistence.DeleteWorkflowExecutionRequest{
+		DomainID:   task.DomainID,
+		WorkflowID: task.WorkflowID,
+		RunID:      task.RunID,
+		ShardID:    common.Ptr(t.shard.GetShardID()),
+	})
 }
 
 func (t *transferActiveTaskExecutor) processRecordWorkflowClosed(
