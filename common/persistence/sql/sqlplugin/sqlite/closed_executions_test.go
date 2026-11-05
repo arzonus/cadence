@@ -16,3 +16,7 @@ func TestSQLiteClosedExecutionStore(t *testing.T) {
 	require.NoError(t, err)
 	pt.CheckClosedExecutionStore(t, store)
 }
+
+func TestSQLiteWarmStorage(t *testing.T) {
+	pt.CheckWarmStorage(t, SQLiteTestBase(t))
+}

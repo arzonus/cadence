@@ -193,3 +193,9 @@ func CassandraTestBase(t *testing.T, dcOpts ...func(*persistence.DynamicConfigur
 	base.Setup()
 	return base
 }
+
+func TestCassandraWarmStorage(t *testing.T) {
+	base := CassandraTestBase(t)
+	defer base.TearDownWorkflowStore()
+	pt.CheckWarmStorage(t, base)
+}

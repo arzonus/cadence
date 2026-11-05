@@ -16,3 +16,7 @@ func TestMySQLClosedExecutionStore(t *testing.T) {
 	require.NoError(t, err)
 	pt.CheckClosedExecutionStore(t, store)
 }
+
+func TestMySQLWarmStorage(t *testing.T) {
+	pt.CheckWarmStorage(t, MySQLTestBase(t))
+}

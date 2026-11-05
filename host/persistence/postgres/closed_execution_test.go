@@ -16,3 +16,7 @@ func TestPostgresClosedExecutionStore(t *testing.T) {
 	require.NoError(t, err)
 	pt.CheckClosedExecutionStore(t, store)
 }
+
+func TestPostgresWarmStorage(t *testing.T) {
+	pt.CheckWarmStorage(t, PostgresTestBase(t))
+}
