@@ -21,22 +21,17 @@
 package cassandra
 
 import (
-	"context"
 	"testing"
 
-	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/uber/cadence/common/constants"
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/persistence/nosql"
 	"github.com/uber/cadence/common/persistence/nosql/nosqlplugin/cassandra/gocql/public"
 	pt "github.com/uber/cadence/common/persistence/persistence-tests"
-	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/testflags"
 
 	_ "github.com/uber/cadence/common/persistence/nosql/nosqlplugin/cassandra" // register cassandra plugin
@@ -149,30 +144,7 @@ func TestCassandraClosedExecutionStore(t *testing.T) {
 	store, err := factory.NewClosedExecutionStore()
 	require.NoError(t, err)
 	defer store.Close()
-
-	ctx := context.Background()
-	key := persistence.ClosedExecutionKey{DomainID: uuid.New(), WorkflowID: "closed-wf", RunID: uuid.New()}
-	blob := func(s string) *persistence.DataBlob {
-		return &persistence.DataBlob{Data: []byte(s), Encoding: constants.EncodingTypeThriftRWSnappy}
-	}
-
-	_, err = store.GetClosedExecution(ctx, key)
-	assert.IsType(t, &types.EntityNotExistsError{}, err, "missing row")
-	assert.NoError(t, store.DeleteClosedExecution(ctx, key), "deleting a missing row")
-
-	require.NoError(t, store.InsertClosedExecution(ctx, key, blob("v1")))
-	got, err := store.GetClosedExecution(ctx, key)
-	require.NoError(t, err)
-	assert.Equal(t, blob("v1"), got)
-
-	require.NoError(t, store.InsertClosedExecution(ctx, key, blob("v2")), "upsert")
-	got, err = store.GetClosedExecution(ctx, key)
-	require.NoError(t, err)
-	assert.Equal(t, blob("v2"), got)
-
-	require.NoError(t, store.DeleteClosedExecution(ctx, key))
-	_, err = store.GetClosedExecution(ctx, key)
-	assert.IsType(t, &types.EntityNotExistsError{}, err, "after delete")
+	pt.CheckClosedExecutionStore(t, store)
 }
 
 // CassandraTestBase creates and sets up a TestBase backed by an external/public Cassandra.

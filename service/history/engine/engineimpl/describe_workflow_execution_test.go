@@ -136,12 +136,11 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 				mockMutableState.EXPECT().GetPendingActivityInfos().Return(nil)
 				mockMutableState.EXPECT().GetPendingChildExecutionInfos().Return(nil)
 				mockMutableState.EXPECT().GetPendingDecision().Return(nil, false)
-				// an empty version history makes the rebuild fail fast, which proves it was attempted
+				// an empty version history makes the rebuild fail: the strict mock proves it was attempted,
+				// and Describe still succeeds because the rebuild is best effort
 				mockMutableState.EXPECT().GetVersionHistories().Return(persistence.NewVersionHistories(&persistence.VersionHistory{}))
 			},
-			warmStorage:   true,
-			expectError:   true,
-			errorContains: "version history",
+			warmStorage: true,
 		},
 		{
 			name: "Error - execution cache GetOrCreateWorkflowExecution fails",

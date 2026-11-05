@@ -16,5 +16,5 @@ workerconfig:
   enablereplicator: false
   enableindexer: false
 dynamicclientconfig:
-  filepath: "dynamicconfig/warmoff.yaml"
+  filepath: "dynamicconfig/default.yaml"
   pollInterval: "10s"

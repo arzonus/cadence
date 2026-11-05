@@ -11,6 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/uber/cadence/common"
+	"github.com/uber/cadence/common/constants"
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
@@ -341,6 +342,34 @@ func TestMoveToClosedExecutions(t *testing.T) {
 				e.full.ExecutionInfo.State = persistence.WorkflowStateRunning
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
+		},
+		"zombie run is skipped quietly": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ExecutionInfo.State = persistence.WorkflowStateZombie
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantInUse: true,
+		},
+		"slim row that wouldn't read back (branch without items) is never written": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				blob, err := persistence.NewPayloadSerializer().SerializeVersionHistories(&types.VersionHistories{
+					Histories: []*types.VersionHistory{{BranchToken: []byte("b")}},
+				}, constants.EncodingTypeThriftRW)
+				require.NoError(t, err)
+				e.full.VersionHistories = blob
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantFailures: 1, wantInUse: true,
+		},
+		"row NextEventID disagrees with version histories: stays hot": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ExecutionInfo.NextEventID = lastEventID + 5
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantFailures: 1, wantInUse: true,
 		},
 		"legacy run without version histories stays hot": {
 			sentinel: errNotExists,

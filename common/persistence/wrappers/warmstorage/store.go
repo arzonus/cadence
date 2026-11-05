@@ -8,8 +8,8 @@
 // Opt-in: system.enableWarmStorage (per domain ID, default off) gates the move. Reads keep falling back after
 // the flag is turned off, as long as this cluster has ever moved a run: a sentinel row records that, so Warm
 // rows stay readable until retention deletes them. A cluster that never enabled the flag issues no extra
-// queries besides a sentinel read at startup and at most one a minute after a missed read, and doesn't need
-// the closed_executions table at all.
+// queries besides a sentinel read at startup and at most one a minute after a missed read or a delete, and
+// doesn't need the closed_executions table at all.
 package warmstorage
 
 import (
@@ -194,7 +194,7 @@ func (s *store) fallbackOn(ctx context.Context, domainID string) bool {
 }
 
 // probeSentinel runs at most once per sentinelReprobeInterval, so a cluster that never enabled warm storage
-// pays one closed_executions read per host per minute, and only on reads that missed.
+// pays at most one closed_executions read per host per minute, and only after a missed read or a delete.
 func (s *store) probeSentinel(ctx context.Context) {
 	last := s.probedAt.Load()
 	now := time.Now().UnixNano()
