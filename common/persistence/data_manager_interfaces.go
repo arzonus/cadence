@@ -2021,6 +2021,9 @@ type (
 		DeleteCurrentWorkflowExecution(ctx context.Context, request *DeleteCurrentWorkflowExecutionRequest) error
 		GetCurrentExecution(ctx context.Context, request *GetCurrentExecutionRequest) (*GetCurrentExecutionResponse, error)
 		IsWorkflowExecutionExists(ctx context.Context, request *IsWorkflowExecutionExistsRequest) (*IsWorkflowExecutionExistsResponse, error)
+		// MoveToClosedExecutions swaps a closed run's executions row for a slim closed_executions row (warm storage).
+		// It's a no-op unless the warm storage decorator is wired in.
+		MoveToClosedExecutions(ctx context.Context, request *DeleteWorkflowExecutionRequest) error
 
 		// Replication task related methods
 

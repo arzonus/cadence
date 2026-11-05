@@ -44,6 +44,7 @@ type (
 		ErrorInjectionRate                       dynamicproperties.FloatPropertyFn
 		RewriteSampleRate                        dynamicproperties.IntPropertyFn
 		RewriteOptimizationBackends              dynamicproperties.ListPropertyFn
+		EnableWarmStorage                        dynamicproperties.BoolPropertyFnWithDomainIDFilter
 	}
 )
 
@@ -66,6 +67,7 @@ func NewDynamicConfiguration(dc *dynamicconfig.Collection) *DynamicConfiguration
 		ErrorInjectionRate:                       dc.GetFloat64Property(dynamicproperties.PersistenceErrorInjectionRate),
 		RewriteSampleRate:                        dc.GetIntProperty(dynamicproperties.RewriteSampleRate),
 		RewriteOptimizationBackends:              dc.GetListProperty(dynamicproperties.RewriteOptimizationBackends),
+		EnableWarmStorage:                        dc.GetBoolPropertyFilteredByDomainID(dynamicproperties.EnableWarmStorage),
 	}
 }
 

@@ -2505,6 +2505,13 @@ const (
 	// Default value: false
 	EnforceSchemaVerificationV2
 
+	// EnableWarmStorage moves closed runs from executions to the slim closed_executions table
+	// KeyName: system.enableWarmStorage
+	// Value type: Bool
+	// Default value: false
+	// Allowed filters: DomainID
+	EnableWarmStorage
+
 	// LastBoolKey must be the last one in this const group
 	LastBoolKey
 )
@@ -5448,6 +5455,12 @@ var BoolKeys = map[BoolKey]DynamicBool{
 	EnforceSchemaVerificationV2: {
 		KeyName:      "system.enforceSchemaVerificationV2",
 		Description:  "EnforceSchemaVerificationV2 enables more thorough schema verification, including advanced visibility",
+		DefaultValue: false,
+	},
+	EnableWarmStorage: {
+		KeyName:      "system.enableWarmStorage",
+		Filters:      []Filter{DomainID},
+		Description:  "EnableWarmStorage moves closed runs to the slim closed_executions table. Requires the closed_executions schema.",
 		DefaultValue: false,
 	},
 }

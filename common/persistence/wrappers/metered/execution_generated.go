@@ -653,6 +653,37 @@ func (c *meteredExecutionManager) ListCurrentExecutions(ctx context.Context, req
 	return
 }
 
+func (c *meteredExecutionManager) MoveToClosedExecutions(ctx context.Context, request *_sourcePersistence.DeleteWorkflowExecutionRequest) (err error) {
+	op := func() error {
+		err = c.wrapped.MoveToClosedExecutions(ctx, request)
+		return err
+	}
+
+	retryCount := getRetryCountFromContext(ctx)
+	if domainName, hasDomainName := getDomainNameFromRequest(request); hasDomainName {
+		logTags := append([]tag.Tag{tag.WorkflowDomainName(domainName)}, getCustomLogTags(request)...)
+		if shardID, hasShardID := getShardIDFromRequest(request); hasShardID && shardID != nil {
+			logTags = append(logTags, tag.ShardID(*shardID))
+		}
+		c.logger.Debug("Persistence MoveToClosedExecutions called", logTags...)
+		if c.enableShardIDMetrics() {
+			if shardID, hasShardID := getShardIDFromRequest(request); hasShardID && shardID != nil {
+				err = c.callWithDomainAndShardScope(metrics.PersistenceMoveToClosedExecutionsScope, op, metrics.DomainTag(domainName),
+					metrics.ShardIDTag(*shardID), metrics.IsRetryTag(retryCount > 0))
+			} else {
+				err = c.call(metrics.PersistenceMoveToClosedExecutionsScope, op, metrics.DomainTag(domainName), metrics.IsRetryTag(retryCount > 0))
+			}
+		} else {
+			err = c.call(metrics.PersistenceMoveToClosedExecutionsScope, op, metrics.DomainTag(domainName), metrics.IsRetryTag(retryCount > 0))
+		}
+		return
+	}
+
+	err = c.callWithoutDomainTag(metrics.PersistenceMoveToClosedExecutionsScope, op, append(getCustomMetricTags(request), metrics.IsRetryTag(retryCount > 0))...)
+
+	return
+}
+
 func (c *meteredExecutionManager) PutReplicationTaskToDLQ(ctx context.Context, request *_sourcePersistence.PutReplicationTaskToDLQRequest) (err error) {
 	op := func() error {
 		err = c.wrapped.PutReplicationTaskToDLQ(ctx, request)

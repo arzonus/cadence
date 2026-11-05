@@ -194,6 +194,14 @@ func (c *ratelimitedExecutionManager) ListCurrentExecutions(ctx context.Context,
 	return c.wrapped.ListCurrentExecutions(ctx, request)
 }
 
+func (c *ratelimitedExecutionManager) MoveToClosedExecutions(ctx context.Context, request *_sourcePersistence.DeleteWorkflowExecutionRequest) (err error) {
+	if !c.callerBypass.AllowLimiter(ctx, c.rateLimiter) {
+		err = ErrPersistenceLimitExceeded
+		return
+	}
+	return c.wrapped.MoveToClosedExecutions(ctx, request)
+}
+
 func (c *ratelimitedExecutionManager) PutReplicationTaskToDLQ(ctx context.Context, request *_sourcePersistence.PutReplicationTaskToDLQRequest) (err error) {
 	if !c.callerBypass.AllowLimiter(ctx, c.rateLimiter) {
 		err = ErrPersistenceLimitExceeded

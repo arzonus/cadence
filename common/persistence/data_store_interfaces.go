@@ -32,7 +32,7 @@ import (
 	"github.com/uber/cadence/common/types"
 )
 
-//go:generate mockgen -package $GOPACKAGE -destination data_store_interfaces_mock.go -self_package github.com/uber/cadence/common/persistence github.com/uber/cadence/common/persistence ExecutionStore,ShardStore,DomainStore,TaskStore,HistoryStore,ConfigStore,DomainAuditStore,SemaphoreMetadataStore,SemaphoreTaskStore,SemaphoreTokenStore,HistoryDLQTaskStore,AsyncWorkflowQueueStore
+//go:generate mockgen -package $GOPACKAGE -destination data_store_interfaces_mock.go -self_package github.com/uber/cadence/common/persistence github.com/uber/cadence/common/persistence ExecutionStore,ShardStore,DomainStore,TaskStore,HistoryStore,ConfigStore,DomainAuditStore,SemaphoreMetadataStore,SemaphoreTaskStore,SemaphoreTokenStore,HistoryDLQTaskStore,AsyncWorkflowQueueStore,ClosedExecutionStore
 //go:generate mockgen -package $GOPACKAGE -destination visibility_store_mock.go -self_package github.com/uber/cadence/common/persistence github.com/uber/cadence/common/persistence VisibilityStore
 
 type (
@@ -205,6 +205,25 @@ type (
 		// Active cluster selection policy related methods
 		GetActiveClusterSelectionPolicy(ctx context.Context, request *GetActiveClusterSelectionPolicyRequest) (*DataBlob, error)
 		DeleteActiveClusterSelectionPolicy(ctx context.Context, request *DeleteActiveClusterSelectionPolicyRequest) error
+	}
+
+	// ClosedExecutionKey identifies a row in closed_executions. The table is keyed by run, not by shard.
+	ClosedExecutionKey struct {
+		DomainID   string
+		WorkflowID string
+		RunID      string
+	}
+
+	// ClosedExecutionStore keeps the slim rows of closed runs (warm storage).
+	ClosedExecutionStore interface {
+		Closeable
+		GetName() string
+		// InsertClosedExecution upserts the row.
+		InsertClosedExecution(ctx context.Context, key ClosedExecutionKey, data *DataBlob) error
+		// GetClosedExecution returns *types.EntityNotExistsError if the row is missing.
+		GetClosedExecution(ctx context.Context, key ClosedExecutionKey) (*DataBlob, error)
+		// DeleteClosedExecution doesn't fail when the row is missing.
+		DeleteClosedExecution(ctx context.Context, key ClosedExecutionKey) error
 	}
 
 	// HistoryStore is to manager workflow history events

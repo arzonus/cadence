@@ -936,6 +936,19 @@ func (m *executionManagerImpl) DeleteWorkflowExecution(
 	return m.persistence.DeleteWorkflowExecution(ctx, request)
 }
 
+func (m *executionManagerImpl) MoveToClosedExecutions(
+	ctx context.Context,
+	request *DeleteWorkflowExecutionRequest,
+) error {
+	// only the warm storage store decorator knows how to move; plain stores have nothing to do
+	if mover, ok := m.persistence.(interface {
+		MoveToClosedExecutions(context.Context, *DeleteWorkflowExecutionRequest) error
+	}); ok {
+		return mover.MoveToClosedExecutions(ctx, request)
+	}
+	return nil
+}
+
 func (m *executionManagerImpl) DeleteCurrentWorkflowExecution(
 	ctx context.Context,
 	request *DeleteCurrentWorkflowExecutionRequest,

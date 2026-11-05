@@ -96,6 +96,11 @@ func (m *notifyingExecutionManager) DeleteWorkflowExecution(ctx context.Context,
 	return m.wrapped.DeleteWorkflowExecution(ctx, request)
 }
 
+// MoveToClosedExecutions writes no history tasks.
+func (m *notifyingExecutionManager) MoveToClosedExecutions(ctx context.Context, request *persistence.DeleteWorkflowExecutionRequest) error {
+	return m.wrapped.MoveToClosedExecutions(ctx, request)
+}
+
 func (m *notifyingExecutionManager) DeleteCurrentWorkflowExecution(ctx context.Context, request *persistence.DeleteCurrentWorkflowExecutionRequest) error {
 	return m.wrapped.DeleteCurrentWorkflowExecution(ctx, request)
 }

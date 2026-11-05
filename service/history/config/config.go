@@ -345,6 +345,7 @@ type Config struct {
 	EnableDebugMode               bool // note that this value is initialized once on service start
 	EnableTaskInfoLogByDomainID   dynamicproperties.BoolPropertyFnWithDomainIDFilter
 	EnableTimerDebugLogByDomainID dynamicproperties.BoolPropertyFnWithDomainIDFilter
+	EnableWarmStorage             dynamicproperties.BoolPropertyFnWithDomainIDFilter
 
 	// Hotshard stuff
 	SampleLoggingRate                     dynamicproperties.IntPropertyFn
@@ -638,6 +639,7 @@ func New(dc *dynamicconfig.Collection, numberOfShards int, maxMessageSize int, i
 		EnableDebugMode:               dc.GetBoolProperty(dynamicproperties.EnableDebugMode)(),
 		EnableTaskInfoLogByDomainID:   dc.GetBoolPropertyFilteredByDomainID(dynamicproperties.HistoryEnableTaskInfoLogByDomainID),
 		EnableTimerDebugLogByDomainID: dc.GetBoolPropertyFilteredByDomainID(dynamicproperties.EnableTimerDebugLogByDomainID),
+		EnableWarmStorage:             dc.GetBoolPropertyFilteredByDomainID(dynamicproperties.EnableWarmStorage),
 
 		SampleLoggingRate:                     dc.GetIntProperty(dynamicproperties.SampleLoggingRate),
 		EnableShardIDMetrics:                  dc.GetBoolProperty(dynamicproperties.EnableShardIDMetrics),

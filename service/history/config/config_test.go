@@ -261,6 +261,7 @@ func TestNewConfig(t *testing.T) {
 		"EnableDebugMode":                                        {dynamicproperties.EnableDebugMode, true},
 		"EnableTaskInfoLogByDomainID":                            {dynamicproperties.HistoryEnableTaskInfoLogByDomainID, true},
 		"EnableTimerDebugLogByDomainID":                          {dynamicproperties.EnableTimerDebugLogByDomainID, true},
+		"EnableWarmStorage":                                      {dynamicproperties.EnableWarmStorage, true},
 		"SampleLoggingRate":                                      {dynamicproperties.SampleLoggingRate, 93},
 		"EnableShardIDMetrics":                                   {dynamicproperties.EnableShardIDMetrics, true},
 		"LargeShardHistorySizeMetricThreshold":                   {dynamicproperties.LargeShardHistorySizeMetricThreshold, 94},

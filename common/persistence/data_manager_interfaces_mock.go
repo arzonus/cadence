@@ -727,6 +727,20 @@ func (mr *MockExecutionManagerMockRecorder) ListCurrentExecutions(ctx, request a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCurrentExecutions", reflect.TypeOf((*MockExecutionManager)(nil).ListCurrentExecutions), ctx, request)
 }
 
+// MoveToClosedExecutions mocks base method.
+func (m *MockExecutionManager) MoveToClosedExecutions(ctx context.Context, request *DeleteWorkflowExecutionRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MoveToClosedExecutions", ctx, request)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MoveToClosedExecutions indicates an expected call of MoveToClosedExecutions.
+func (mr *MockExecutionManagerMockRecorder) MoveToClosedExecutions(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MoveToClosedExecutions", reflect.TypeOf((*MockExecutionManager)(nil).MoveToClosedExecutions), ctx, request)
+}
+
 // PutReplicationTaskToDLQ mocks base method.
 func (m *MockExecutionManager) PutReplicationTaskToDLQ(ctx context.Context, request *PutReplicationTaskToDLQRequest) error {
 	m.ctrl.T.Helper()

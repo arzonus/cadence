@@ -331,6 +331,21 @@ func (c *injectorExecutionManager) ListCurrentExecutions(ctx context.Context, re
 	return
 }
 
+func (c *injectorExecutionManager) MoveToClosedExecutions(ctx context.Context, request *_sourcePersistence.DeleteWorkflowExecutionRequest) (err error) {
+	fakeErr := generateFakeError(c.errorRate, c.starttime)
+	var forwardCall bool
+	if forwardCall = shouldForwardCallToPersistence(fakeErr); forwardCall {
+		err = c.wrapped.MoveToClosedExecutions(ctx, request)
+	}
+
+	if fakeErr != nil {
+		logErr(c.logger, "ExecutionManager.MoveToClosedExecutions", fakeErr, forwardCall, err)
+		err = fakeErr
+		return
+	}
+	return
+}
+
 func (c *injectorExecutionManager) PutReplicationTaskToDLQ(ctx context.Context, request *_sourcePersistence.PutReplicationTaskToDLQRequest) (err error) {
 	fakeErr := generateFakeError(c.errorRate, c.starttime)
 	var forwardCall bool

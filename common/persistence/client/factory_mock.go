@@ -315,6 +315,21 @@ func (mr *MockDataStoreFactoryMockRecorder) NewAdminDBs(pType any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewAdminDBs", reflect.TypeOf((*MockDataStoreFactory)(nil).NewAdminDBs), pType)
 }
 
+// NewClosedExecutionStore mocks base method.
+func (m *MockDataStoreFactory) NewClosedExecutionStore() (persistence.ClosedExecutionStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewClosedExecutionStore")
+	ret0, _ := ret[0].(persistence.ClosedExecutionStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NewClosedExecutionStore indicates an expected call of NewClosedExecutionStore.
+func (mr *MockDataStoreFactoryMockRecorder) NewClosedExecutionStore() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewClosedExecutionStore", reflect.TypeOf((*MockDataStoreFactory)(nil).NewClosedExecutionStore))
+}
+
 // NewConfigStore mocks base method.
 func (m *MockDataStoreFactory) NewConfigStore() (persistence.ConfigStore, error) {
 	m.ctrl.T.Helper()

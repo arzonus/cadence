@@ -163,6 +163,11 @@ func (f *Factory) NewExecutionStore() (p.ExecutionStore, error) {
 	return NewSQLExecutionStore(conn, f.logger, f.parser, f.taskSerializer, f.dc)
 }
 
+// NewClosedExecutionStore returns the warm storage store for closed runs
+func (f *Factory) NewClosedExecutionStore() (p.ClosedExecutionStore, error) {
+	return nil, fmt.Errorf("closed executions store is not implemented") // TODO(warm-storage): WP-B
+}
+
 // NewVisibilityStore returns a visibility store
 // TODO sortByCloseTime will be removed and implemented for https://github.com/uber/cadence/issues/3621
 func (f *Factory) NewVisibilityStore(sortByCloseTime bool) (p.VisibilityStore, error) {

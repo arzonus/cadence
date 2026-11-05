@@ -110,6 +110,8 @@ type (
 		NewHistoryDLQTaskStore() (p.HistoryDLQTaskStore, error)
 		// NewExecutionStore returns an execution store
 		NewExecutionStore() (p.ExecutionStore, error)
+		// NewClosedExecutionStore returns the warm storage store for closed runs
+		NewClosedExecutionStore() (p.ClosedExecutionStore, error)
 		// NewVisibilityStore returns a new visibility store,
 		// TODO We temporarily using sortByCloseTime to determine whether or not ListClosedWorkflowExecutions should
 		// be ordering by CloseTime. This will be removed when implementing https://github.com/uber/cadence/issues/3621

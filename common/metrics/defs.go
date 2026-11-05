@@ -205,6 +205,8 @@ const (
 	PersistenceGetCurrentExecutionScope
 	// PersistenceIsWorkflowExecutionExistsScope tracks IsWorkflowExecutionExists calls made by service to persistence layer
 	PersistenceIsWorkflowExecutionExistsScope
+	// PersistenceMoveToClosedExecutionsScope tracks MoveToClosedExecutions calls made by service to persistence layer
+	PersistenceMoveToClosedExecutionsScope
 	// PersistenceListCurrentExecutionsScope tracks ListCurrentExecutions calls made by service to persistence layer
 	PersistenceListCurrentExecutionsScope
 	// PersistenceListConcreteExecutionsScope tracks ListConcreteExecutions calls made by service to persistence layer
@@ -1644,6 +1646,7 @@ var ScopeDefs = map[ServiceIdx]map[ScopeIdx]scopeDefinition{
 		PersistenceDeleteCurrentWorkflowExecutionScope:           {operation: "DeleteCurrentWorkflowExecution"},
 		PersistenceGetCurrentExecutionScope:                      {operation: "GetCurrentExecution"},
 		PersistenceIsWorkflowExecutionExistsScope:                {operation: "IsWorkflowExecutionExists"},
+		PersistenceMoveToClosedExecutionsScope:                   {operation: "MoveToClosedExecutions"},
 		PersistenceListCurrentExecutionsScope:                    {operation: "ListCurrentExecutions"},
 		PersistenceListConcreteExecutionsScope:                   {operation: "ListConcreteExecutions"},
 		PersistenceGetTransferTasksScope:                         {operation: "GetTransferTasks"},
@@ -2402,6 +2405,9 @@ const (
 	CadenceErrMarkerNameExceededWarnLimit
 	CadenceErrTimerIDExceededWarnLimit
 	CadenceErrSemaphoreNameExceededWarnLimit
+	WarmStorageMoves
+	WarmStorageMoveFailures
+	WarmStorageFallbackHits
 	PersistenceRequests
 	PersistenceFailures
 	PersistenceLatency
@@ -3390,6 +3396,9 @@ var MetricDefs = map[ServiceIdx]map[MetricIdx]metricDefinition{
 		CadenceErrMarkerNameExceededWarnLimit:                        {metricName: "cadence_errors_marker_name_exceeded_warn_limit", metricType: Counter},
 		CadenceErrTimerIDExceededWarnLimit:                           {metricName: "cadence_errors_timer_id_exceeded_warn_limit", metricType: Counter},
 		CadenceErrSemaphoreNameExceededWarnLimit:                     {metricName: "cadence_errors_semaphore_name_exceeded_warn_limit", metricType: Counter},
+		WarmStorageMoves:                                             {metricName: "warm_storage_moves", metricType: Counter},
+		WarmStorageMoveFailures:                                      {metricName: "warm_storage_move_failures", metricType: Counter},
+		WarmStorageFallbackHits:                                      {metricName: "warm_storage_fallback_hits", metricType: Counter},
 		PersistenceRequests:                                          {metricName: "persistence_requests", metricType: Counter},
 		PersistenceFailures:                                          {metricName: "persistence_errors", metricType: Counter},
 		PersistenceLatency:                                           {metricName: "persistence_latency", metricType: Timer},
