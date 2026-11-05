@@ -214,6 +214,22 @@ type (
 		RunID      serialization.UUID
 	}
 
+	// ClosedExecutionRow represents a row in closed_executions table
+	ClosedExecutionRow struct {
+		DomainID     serialization.UUID `db:"domain_id"`
+		WorkflowID   string             `db:"workflow_id"`
+		RunID        serialization.UUID `db:"run_id"`
+		Data         []byte             `db:"data"`
+		DataEncoding string             `db:"data_encoding"`
+	}
+
+	// ClosedExecutionFilter is the primary key of closed_executions table
+	ClosedExecutionFilter struct {
+		DomainID   serialization.UUID
+		WorkflowID string
+		RunID      serialization.UUID
+	}
+
 	// TasksRow represents a row in tasks table
 	TasksRow struct {
 		ShardID      int // this is DBShardID, not historyShardID (TODO: maybe rename it for clarification)
@@ -758,6 +774,15 @@ type (
 		// DeleteFromActiveClusterSelectionPolicy deletes 0 or 1 row from active_cluster_selection_policy table
 		// Required filter Params: {shardID, domainID, workflowID, runID}
 		DeleteFromActiveClusterSelectionPolicy(ctx context.Context, filter *ActiveClusterSelectionPolicyFilter) (sql.Result, error)
+
+		// UpsertIntoClosedExecutions inserts or replaces a row in closed_executions table
+		UpsertIntoClosedExecutions(ctx context.Context, row *ClosedExecutionRow) (sql.Result, error)
+		// SelectFromClosedExecutions returns 0 or 1 row from closed_executions table
+		// Required filter Params: {domainID, workflowID, runID}
+		SelectFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (*ClosedExecutionRow, error)
+		// DeleteFromClosedExecutions deletes 0 or 1 row from closed_executions table
+		// Required filter Params: {domainID, workflowID, runID}
+		DeleteFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (sql.Result, error)
 
 		InsertIntoReplicationTasks(ctx context.Context, rows []ReplicationTasksRow) (sql.Result, error)
 		// SelectFromReplicationTasks returns one or more rows from replication_tasks table
