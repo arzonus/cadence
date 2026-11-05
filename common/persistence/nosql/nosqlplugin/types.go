@@ -286,6 +286,15 @@ type (
 		NextPageToken  []byte
 	}
 
+	// ClosedExecutionRow defines the row struct for a closed run's slim state
+	ClosedExecutionRow struct {
+		DomainID     string
+		WorkflowID   string
+		RunID        string
+		Data         []byte
+		DataEncoding string
+	}
+
 	// SemaphoreMetadataRow defines the row struct for distributed semaphore metadata
 	SemaphoreMetadataRow struct {
 		DomainID      string

@@ -109,7 +109,7 @@ func (f *Factory) NewExecutionStore() (persistence.ExecutionStore, error) {
 
 // NewClosedExecutionStore returns the warm storage store for closed runs
 func (f *Factory) NewClosedExecutionStore() (persistence.ClosedExecutionStore, error) {
-	return nil, fmt.Errorf("closed executions store is not implemented") // TODO(warm-storage): WP-A
+	return newNoSQLClosedExecutionStore(f.cfg, f.logger, f.metricsClient, f.dc)
 }
 
 // NewVisibilityStore returns a visibility store
