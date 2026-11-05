@@ -226,6 +226,7 @@ var (
 	StoreOperationGetCurrentExecution                = storeOperation("get-current-execution")
 	StoreOperationListCurrentExecution               = storeOperation("list-current-execution")
 	StoreOperationIsWorkflowExecutionExists          = storeOperation("is-wf-execution-exists")
+	StoreOperationMoveToClosedExecutions             = storeOperation("move-to-closed-executions")
 	StoreOperationListConcreteExecution              = storeOperation("list-concrete-execution")
 	StoreOperationGetTransferTasks                   = storeOperation("get-transfer-tasks")
 	StoreOperationGetCrossClusterTasks               = storeOperation("get-cross-cluster-tasks")

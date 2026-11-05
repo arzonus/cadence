@@ -41,6 +41,7 @@ func TestSchema(t *testing.T) {
 	// Versioned dirs that ship ahead of the Version constant on purpose, so clusters that
 	// don't use the feature don't have to upgrade their schema. Remove an entry when its constant is bumped.
 	unreleased := map[string]string{
+		"cassandra_main": "0.56", // warm storage: closed_executions
 		"mysql_main":    "0.9", // warm storage: closed_executions
 		"postgres_main": "0.9", // warm storage: closed_executions
 	}

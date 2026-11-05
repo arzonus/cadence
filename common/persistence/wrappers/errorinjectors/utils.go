@@ -266,6 +266,8 @@ func executionManagerTags(op string) *tag.Tag {
 		return &tag.StoreOperationListCurrentExecution
 	case "ExecutionManager.IsWorkflowExecutionExists":
 		return &tag.StoreOperationIsWorkflowExecutionExists
+	case "ExecutionManager.MoveToClosedExecutions":
+		return &tag.StoreOperationMoveToClosedExecutions
 	case "ExecutionManager.ListConcreteExecutions":
 		return &tag.StoreOperationListConcreteExecution
 	case "ExecutionManager.GetTransferTasks":
