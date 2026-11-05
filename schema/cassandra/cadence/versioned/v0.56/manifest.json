@@ -1,0 +1,8 @@
+{
+  "CurrVersion": "0.56",
+  "MinCompatibleVersion": "0.56",
+  "Description": "Adding closed_executions table for warm storage",
+  "SchemaUpdateCqlFiles": [
+    "closed_executions.cql"
+  ]
+}
