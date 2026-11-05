@@ -147,7 +147,7 @@ func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence
 		return s.moveFailed(request, err)
 	}
 	if resp.State.ExecutionInfo.State != persistence.WorkflowStateCompleted {
-		return s.moveFailed(request, errors.New("run is not closed"))
+		return nil // e.g. standby hasn't applied the close yet; the run just stays hot
 	}
 	blob, err := toBlob(s.parser, resp.State)
 	if err != nil {

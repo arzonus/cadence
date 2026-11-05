@@ -335,13 +335,12 @@ func TestMoveToClosedExecutions(t *testing.T) {
 			},
 			wantInUse: true,
 		},
-		"open run is never moved": {
+		"open run (standby hasn't closed it yet) is skipped quietly": {
 			sentinel: errNotExists,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.ExecutionInfo.State = persistence.WorkflowStateRunning
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
-			wantFailures: 1,
 		},
 		"legacy run without version histories stays hot": {
 			sentinel: errNotExists,
