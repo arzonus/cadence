@@ -45,6 +45,7 @@ import (
 	"github.com/uber/cadence/common/persistence/wrappers/metered"
 	"github.com/uber/cadence/common/persistence/wrappers/ratelimited"
 	"github.com/uber/cadence/common/persistence/wrappers/sampled"
+	"github.com/uber/cadence/common/persistence/wrappers/warmstorage"
 	pnt "github.com/uber/cadence/common/pinot"
 	"github.com/uber/cadence/common/quotas"
 	"github.com/uber/cadence/common/service"
@@ -370,6 +371,15 @@ func (f *factoryImpl) NewExecutionManager() (p.ExecutionManager, error) {
 	store, err := ds.factory.NewExecutionStore()
 	if err != nil {
 		return nil, err
+	}
+	if closed, err := ds.factory.NewClosedExecutionStore(); err != nil {
+		f.logger.Info("warm storage is not supported by this datastore", tag.Error(err))
+	} else {
+		parser, err := serialization.NewParser(f.dc)
+		if err != nil {
+			return nil, err
+		}
+		store = warmstorage.NewExecutionStore(store, closed, parser, f.dc, f.logger, f.metricsClient)
 	}
 	result := p.NewExecutionManagerImpl(store, f.logger, p.NewPayloadSerializer(), f.dc)
 	if errorRate := f.dc.ErrorInjectionRate(); errorRate != 0 {
