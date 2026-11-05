@@ -174,6 +174,21 @@ func (mr *MocktableCRUDMockRecorder) DeleteFromChildExecutionInfoMaps(ctx, filte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFromChildExecutionInfoMaps", reflect.TypeOf((*MocktableCRUD)(nil).DeleteFromChildExecutionInfoMaps), ctx, filter)
 }
 
+// DeleteFromClosedExecutions mocks base method.
+func (m *MocktableCRUD) DeleteFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (sql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteFromClosedExecutions", ctx, filter)
+	ret0, _ := ret[0].(sql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteFromClosedExecutions indicates an expected call of DeleteFromClosedExecutions.
+func (mr *MocktableCRUDMockRecorder) DeleteFromClosedExecutions(ctx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFromClosedExecutions", reflect.TypeOf((*MocktableCRUD)(nil).DeleteFromClosedExecutions), ctx, filter)
+}
+
 // DeleteFromCrossClusterTasks mocks base method.
 func (m *MocktableCRUD) DeleteFromCrossClusterTasks(ctx context.Context, filter *CrossClusterTasksFilter) (sql.Result, error) {
 	m.ctrl.T.Helper()
@@ -1266,6 +1281,21 @@ func (mr *MocktableCRUDMockRecorder) SelectFromChildExecutionInfoMaps(ctx, filte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectFromChildExecutionInfoMaps", reflect.TypeOf((*MocktableCRUD)(nil).SelectFromChildExecutionInfoMaps), ctx, filter)
 }
 
+// SelectFromClosedExecutions mocks base method.
+func (m *MocktableCRUD) SelectFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (*ClosedExecutionRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectFromClosedExecutions", ctx, filter)
+	ret0, _ := ret[0].(*ClosedExecutionRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectFromClosedExecutions indicates an expected call of SelectFromClosedExecutions.
+func (mr *MocktableCRUDMockRecorder) SelectFromClosedExecutions(ctx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectFromClosedExecutions", reflect.TypeOf((*MocktableCRUD)(nil).SelectFromClosedExecutions), ctx, filter)
+}
+
 // SelectFromCrossClusterTasks mocks base method.
 func (m *MocktableCRUD) SelectFromCrossClusterTasks(ctx context.Context, filter *CrossClusterTasksFilter) ([]CrossClusterTasksRow, error) {
 	m.ctrl.T.Helper()
@@ -1743,6 +1773,21 @@ func (mr *MocktableCRUDMockRecorder) UpdateTaskListsWithTTL(ctx, row any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskListsWithTTL", reflect.TypeOf((*MocktableCRUD)(nil).UpdateTaskListsWithTTL), ctx, row)
 }
 
+// UpsertIntoClosedExecutions mocks base method.
+func (m *MocktableCRUD) UpsertIntoClosedExecutions(ctx context.Context, row *ClosedExecutionRow) (sql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertIntoClosedExecutions", ctx, row)
+	ret0, _ := ret[0].(sql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertIntoClosedExecutions indicates an expected call of UpsertIntoClosedExecutions.
+func (mr *MocktableCRUDMockRecorder) UpsertIntoClosedExecutions(ctx, row any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertIntoClosedExecutions", reflect.TypeOf((*MocktableCRUD)(nil).UpsertIntoClosedExecutions), ctx, row)
+}
+
 // WriteLockExecutions mocks base method.
 func (m *MocktableCRUD) WriteLockExecutions(ctx context.Context, filter *ExecutionsFilter) (int, error) {
 	m.ctrl.T.Helper()
@@ -2084,6 +2129,21 @@ func (m *MockTx) DeleteFromChildExecutionInfoMaps(ctx context.Context, filter *C
 func (mr *MockTxMockRecorder) DeleteFromChildExecutionInfoMaps(ctx, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFromChildExecutionInfoMaps", reflect.TypeOf((*MockTx)(nil).DeleteFromChildExecutionInfoMaps), ctx, filter)
+}
+
+// DeleteFromClosedExecutions mocks base method.
+func (m *MockTx) DeleteFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (sql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteFromClosedExecutions", ctx, filter)
+	ret0, _ := ret[0].(sql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteFromClosedExecutions indicates an expected call of DeleteFromClosedExecutions.
+func (mr *MockTxMockRecorder) DeleteFromClosedExecutions(ctx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFromClosedExecutions", reflect.TypeOf((*MockTx)(nil).DeleteFromClosedExecutions), ctx, filter)
 }
 
 // DeleteFromCrossClusterTasks mocks base method.
@@ -3248,6 +3308,21 @@ func (mr *MockTxMockRecorder) SelectFromChildExecutionInfoMaps(ctx, filter any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectFromChildExecutionInfoMaps", reflect.TypeOf((*MockTx)(nil).SelectFromChildExecutionInfoMaps), ctx, filter)
 }
 
+// SelectFromClosedExecutions mocks base method.
+func (m *MockTx) SelectFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (*ClosedExecutionRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectFromClosedExecutions", ctx, filter)
+	ret0, _ := ret[0].(*ClosedExecutionRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectFromClosedExecutions indicates an expected call of SelectFromClosedExecutions.
+func (mr *MockTxMockRecorder) SelectFromClosedExecutions(ctx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectFromClosedExecutions", reflect.TypeOf((*MockTx)(nil).SelectFromClosedExecutions), ctx, filter)
+}
+
 // SelectFromCrossClusterTasks mocks base method.
 func (m *MockTx) SelectFromCrossClusterTasks(ctx context.Context, filter *CrossClusterTasksFilter) ([]CrossClusterTasksRow, error) {
 	m.ctrl.T.Helper()
@@ -3725,6 +3800,21 @@ func (mr *MockTxMockRecorder) UpdateTaskListsWithTTL(ctx, row any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskListsWithTTL", reflect.TypeOf((*MockTx)(nil).UpdateTaskListsWithTTL), ctx, row)
 }
 
+// UpsertIntoClosedExecutions mocks base method.
+func (m *MockTx) UpsertIntoClosedExecutions(ctx context.Context, row *ClosedExecutionRow) (sql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertIntoClosedExecutions", ctx, row)
+	ret0, _ := ret[0].(sql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertIntoClosedExecutions indicates an expected call of UpsertIntoClosedExecutions.
+func (mr *MockTxMockRecorder) UpsertIntoClosedExecutions(ctx, row any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertIntoClosedExecutions", reflect.TypeOf((*MockTx)(nil).UpsertIntoClosedExecutions), ctx, row)
+}
+
 // WriteLockExecutions mocks base method.
 func (m *MockTx) WriteLockExecutions(ctx context.Context, filter *ExecutionsFilter) (int, error) {
 	m.ctrl.T.Helper()
@@ -3866,6 +3956,21 @@ func (m *MockDB) DeleteFromChildExecutionInfoMaps(ctx context.Context, filter *C
 func (mr *MockDBMockRecorder) DeleteFromChildExecutionInfoMaps(ctx, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFromChildExecutionInfoMaps", reflect.TypeOf((*MockDB)(nil).DeleteFromChildExecutionInfoMaps), ctx, filter)
+}
+
+// DeleteFromClosedExecutions mocks base method.
+func (m *MockDB) DeleteFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (sql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteFromClosedExecutions", ctx, filter)
+	ret0, _ := ret[0].(sql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteFromClosedExecutions indicates an expected call of DeleteFromClosedExecutions.
+func (mr *MockDBMockRecorder) DeleteFromClosedExecutions(ctx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFromClosedExecutions", reflect.TypeOf((*MockDB)(nil).DeleteFromClosedExecutions), ctx, filter)
 }
 
 // DeleteFromCrossClusterTasks mocks base method.
@@ -5044,6 +5149,21 @@ func (mr *MockDBMockRecorder) SelectFromChildExecutionInfoMaps(ctx, filter any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectFromChildExecutionInfoMaps", reflect.TypeOf((*MockDB)(nil).SelectFromChildExecutionInfoMaps), ctx, filter)
 }
 
+// SelectFromClosedExecutions mocks base method.
+func (m *MockDB) SelectFromClosedExecutions(ctx context.Context, filter *ClosedExecutionFilter) (*ClosedExecutionRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectFromClosedExecutions", ctx, filter)
+	ret0, _ := ret[0].(*ClosedExecutionRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectFromClosedExecutions indicates an expected call of SelectFromClosedExecutions.
+func (mr *MockDBMockRecorder) SelectFromClosedExecutions(ctx, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectFromClosedExecutions", reflect.TypeOf((*MockDB)(nil).SelectFromClosedExecutions), ctx, filter)
+}
+
 // SelectFromCrossClusterTasks mocks base method.
 func (m *MockDB) SelectFromCrossClusterTasks(ctx context.Context, filter *CrossClusterTasksFilter) ([]CrossClusterTasksRow, error) {
 	m.ctrl.T.Helper()
@@ -5519,6 +5639,21 @@ func (m *MockDB) UpdateTaskListsWithTTL(ctx context.Context, row *TaskListsRowWi
 func (mr *MockDBMockRecorder) UpdateTaskListsWithTTL(ctx, row any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskListsWithTTL", reflect.TypeOf((*MockDB)(nil).UpdateTaskListsWithTTL), ctx, row)
+}
+
+// UpsertIntoClosedExecutions mocks base method.
+func (m *MockDB) UpsertIntoClosedExecutions(ctx context.Context, row *ClosedExecutionRow) (sql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertIntoClosedExecutions", ctx, row)
+	ret0, _ := ret[0].(sql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertIntoClosedExecutions indicates an expected call of UpsertIntoClosedExecutions.
+func (mr *MockDBMockRecorder) UpsertIntoClosedExecutions(ctx, row any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertIntoClosedExecutions", reflect.TypeOf((*MockDB)(nil).UpsertIntoClosedExecutions), ctx, row)
 }
 
 // WriteLockExecutions mocks base method.

@@ -165,7 +165,11 @@ func (f *Factory) NewExecutionStore() (p.ExecutionStore, error) {
 
 // NewClosedExecutionStore returns the warm storage store for closed runs
 func (f *Factory) NewClosedExecutionStore() (p.ClosedExecutionStore, error) {
-	return nil, fmt.Errorf("closed executions store is not implemented") // TODO(warm-storage): WP-B
+	conn, err := f.dbConn.get()
+	if err != nil {
+		return nil, err
+	}
+	return newSQLClosedExecutionStore(conn, f.logger, f.parser), nil
 }
 
 // NewVisibilityStore returns a visibility store
