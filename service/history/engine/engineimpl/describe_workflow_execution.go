@@ -69,6 +69,13 @@ func (e *historyEngineImpl) DescribeWorkflowExecution(
 		return nil, err
 	}
 
+	// warm runs drop reset points from the stored row; closed + nil is the slim signature
+	if wei := result.WorkflowExecutionInfo; wei.CloseStatus != nil && wei.AutoResetPoints == nil && e.config.EnableWarmStorage(domainID) {
+		if wei.AutoResetPoints, err = rebuildAutoResetPoints(ctx, e.shard, domainID, mutableState); err != nil {
+			return nil, err
+		}
+	}
+
 	return result, nil
 }
 

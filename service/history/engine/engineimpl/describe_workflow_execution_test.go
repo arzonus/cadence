@@ -49,6 +49,7 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 		name                  string
 		setupMocks            func(*execution.MockCache, *execution.MockContext, *execution.MockMutableState, *shard.MockContext, string)
 		enableCorruptionCheck bool
+		warmStorage           bool
 		expectError           bool
 		errorContains         string
 	}{
@@ -87,6 +88,59 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 			},
 			enableCorruptionCheck: false,
 			expectError:           false,
+		},
+		{
+			name: "Warm storage off - closed run with nil reset points is left alone",
+			setupMocks: func(mockExecutionCache *execution.MockCache, mockContext *execution.MockContext, mockMutableState *execution.MockMutableState, mockShard *shard.MockContext, domainUUID string) {
+				wfExecution := types.WorkflowExecution{WorkflowID: "test-wf", RunID: "test-run"}
+				mockExecutionCache.EXPECT().GetOrCreateWorkflowExecution(gomock.Any(), domainUUID, wfExecution).Return(mockContext, func(error) {}, nil)
+				mockContext.EXPECT().LoadWorkflowExecution(gomock.Any()).Return(mockMutableState, nil)
+				mockMutableState.EXPECT().GetDomainEntry().Return(cache.NewLocalDomainCacheEntryForTest(
+					&persistence.DomainInfo{Name: "test-domain-name"}, &persistence.DomainConfig{}, "test-cluster")).Times(2)
+				mockShard.EXPECT().GetDomainCache().Return(cache.NewMockDomainCache(gomock.NewController(t)))
+				mockMutableState.EXPECT().GetExecutionInfo().Return(&persistence.WorkflowExecutionInfo{
+					State:       persistence.WorkflowStateCompleted,
+					CloseStatus: persistence.WorkflowCloseStatusCompleted,
+				})
+				mockMutableState.EXPECT().GetStartEvent(gomock.Any()).Return(&types.HistoryEvent{
+					WorkflowExecutionStartedEventAttributes: &types.WorkflowExecutionStartedEventAttributes{},
+				}, nil)
+				mockMutableState.EXPECT().GetCompletionEvent(gomock.Any()).Return(&types.HistoryEvent{}, nil)
+				mockMutableState.EXPECT().GetNextEventID().Return(int64(10))
+				mockMutableState.EXPECT().GetPendingActivityInfos().Return(nil)
+				mockMutableState.EXPECT().GetPendingChildExecutionInfos().Return(nil)
+				mockMutableState.EXPECT().GetPendingDecision().Return(nil, false)
+			},
+			warmStorage: false,
+			expectError: false,
+		},
+		{
+			name: "Warm storage on - closed run with nil reset points triggers the rebuild",
+			setupMocks: func(mockExecutionCache *execution.MockCache, mockContext *execution.MockContext, mockMutableState *execution.MockMutableState, mockShard *shard.MockContext, domainUUID string) {
+				wfExecution := types.WorkflowExecution{WorkflowID: "test-wf", RunID: "test-run"}
+				mockExecutionCache.EXPECT().GetOrCreateWorkflowExecution(gomock.Any(), domainUUID, wfExecution).Return(mockContext, func(error) {}, nil)
+				mockContext.EXPECT().LoadWorkflowExecution(gomock.Any()).Return(mockMutableState, nil)
+				mockMutableState.EXPECT().GetDomainEntry().Return(cache.NewLocalDomainCacheEntryForTest(
+					&persistence.DomainInfo{Name: "test-domain-name"}, &persistence.DomainConfig{}, "test-cluster")).Times(2)
+				mockShard.EXPECT().GetDomainCache().Return(cache.NewMockDomainCache(gomock.NewController(t)))
+				mockMutableState.EXPECT().GetExecutionInfo().Return(&persistence.WorkflowExecutionInfo{
+					State:       persistence.WorkflowStateCompleted,
+					CloseStatus: persistence.WorkflowCloseStatusCompleted,
+				})
+				mockMutableState.EXPECT().GetStartEvent(gomock.Any()).Return(&types.HistoryEvent{
+					WorkflowExecutionStartedEventAttributes: &types.WorkflowExecutionStartedEventAttributes{},
+				}, nil)
+				mockMutableState.EXPECT().GetCompletionEvent(gomock.Any()).Return(&types.HistoryEvent{}, nil)
+				mockMutableState.EXPECT().GetNextEventID().Return(int64(10))
+				mockMutableState.EXPECT().GetPendingActivityInfos().Return(nil)
+				mockMutableState.EXPECT().GetPendingChildExecutionInfos().Return(nil)
+				mockMutableState.EXPECT().GetPendingDecision().Return(nil, false)
+				// an empty version history makes the rebuild fail fast, which proves it was attempted
+				mockMutableState.EXPECT().GetVersionHistories().Return(persistence.NewVersionHistories(&persistence.VersionHistory{}))
+			},
+			warmStorage:   true,
+			expectError:   true,
+			errorContains: "version history",
 		},
 		{
 			name: "Error - execution cache GetOrCreateWorkflowExecution fails",
@@ -212,6 +266,7 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 			cfg.EnableHistoryCorruptionCheck = func(domain string) bool {
 				return tc.enableCorruptionCheck
 			}
+			cfg.EnableWarmStorage = func(string) bool { return tc.warmStorage }
 
 			engine := &historyEngineImpl{
 				executionCache: mockExecutionCache,

@@ -840,6 +840,58 @@ func (s *transferActiveTaskExecutorSuite) TestProcessCloseExecution_NoParent() {
 	s.Nil(err)
 }
 
+func (s *transferActiveTaskExecutorSuite) TestProcessCloseExecution_WarmStorage() {
+	errMove := errors.New("move failed")
+	errViz := errors.New("visibility failed")
+	for _, tc := range []struct {
+		name    string
+		flagOn  bool
+		vizErr  error
+		moveErr error
+		moves   int
+		wantErr error
+	}{
+		{name: "flag off", moves: 0},
+		{name: "flag on", flagOn: true, moves: 1},
+		{name: "flag on, visibility fails", flagOn: true, vizErr: errViz, moves: 0, wantErr: errViz},
+		{name: "flag on, move fails", flagOn: true, moveErr: errMove, moves: 1, wantErr: errMove},
+	} {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			defer s.TearDownTest()
+			workflowExecution, mutableState, decisionCompletionID, err := test.SetupWorkflowWithCompletedDecision(s.T(), s.mockShard, s.domainID)
+			s.NoError(err)
+			event := test.AddCompleteWorkflowEvent(mutableState, decisionCompletionID, nil)
+			transferTask := s.newTransferTaskFromInfo(&persistence.CloseExecutionTask{
+				WorkflowIdentifier: persistence.WorkflowIdentifier{
+					DomainID:   s.domainID,
+					WorkflowID: workflowExecution.GetWorkflowID(),
+					RunID:      workflowExecution.GetRunID(),
+				},
+				TaskData: persistence.TaskData{Version: s.version, VisibilityTimestamp: time.Time{}, TaskID: int64(59)},
+			})
+			persistenceMutableState, err := test.CreatePersistenceMutableState(s.T(), mutableState, event.ID, event.Version)
+			s.NoError(err)
+			s.mockExecutionMgr.On("GetWorkflowExecution", mock.Anything, mock.Anything).Return(&persistence.GetWorkflowExecutionResponse{State: persistenceMutableState}, nil)
+			s.mockVisibilityMgr.On("RecordWorkflowExecutionClosed", mock.Anything, mock.Anything).Return(tc.vizErr).Once()
+			s.mockArchivalMetadata.On("GetVisibilityConfig").Return(archiver.NewDisabledArchvialConfig())
+			s.mockShard.GetConfig().EnableWarmStorage = func(string) bool { return tc.flagOn }
+			if tc.moves > 0 {
+				s.mockExecutionMgr.On("MoveToClosedExecutions", mock.Anything, &persistence.DeleteWorkflowExecutionRequest{
+					DomainID:   s.domainID,
+					WorkflowID: workflowExecution.GetWorkflowID(),
+					RunID:      workflowExecution.GetRunID(),
+					ShardID:    common.Ptr(s.mockShard.GetShardID()),
+				}).Return(tc.moveErr).Once()
+			}
+
+			_, err = s.transferActiveTaskExecutor.Execute(transferTask)
+			s.Equal(tc.wantErr, err)
+			s.mockExecutionMgr.AssertNumberOfCalls(s.T(), "MoveToClosedExecutions", tc.moves)
+		})
+	}
+}
+
 func (s *transferActiveTaskExecutorSuite) TestProcessCloseExecution_NoParent_HasFewChildren() {
 	s.testProcessCloseExecutionNoParentHasFewChildren(
 		map[string]string{
