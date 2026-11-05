@@ -28,14 +28,15 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 
 	domainID := uuid.New()
 	execution := types.WorkflowExecution{WorkflowID: "warm-storage-wf", RunID: uuid.New()}
-	// nextEventID 10 vs decision schedule ID 2: the slim row derives NextEventID 3 from version histories
-	_, err = s.CreateWorkflowExecution(ctx, domainID, execution, "tl", "wType", 20, 13, nil, 10, 0, 2, nil, nil)
+	_, err = s.CreateWorkflowExecution(ctx, domainID, execution, "tl", "wType", 20, 13, nil, 3, 0, 2, nil, nil)
 	require.NoError(t, err)
 	state, err := s.GetWorkflowExecutionInfo(ctx, domainID, execution)
 	require.NoError(t, err)
 	info := state.ExecutionInfo
 	info.State = persistence.WorkflowStateCompleted
 	info.CloseStatus = persistence.WorkflowCloseStatusCompleted
+	// the slim row drops these, which tells a slim read from a hot one
+	info.AutoResetPoints = &types.ResetPoints{Points: []*types.ResetPointInfo{{BinaryChecksum: "bc", RunID: execution.RunID, FirstDecisionCompletedID: 2}}}
 	require.NoError(t, s.UpdateWorkflowExecutionAndFinish(ctx, info, state.ExecutionStats, info.NextEventID, state.VersionHistories))
 
 	req := &persistence.DeleteWorkflowExecutionRequest{DomainID: domainID, WorkflowID: execution.WorkflowID, RunID: execution.RunID, ShardID: common.IntPtr(s.ShardInfo.ShardID)}
@@ -45,7 +46,8 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 	resp, err := mgr.GetWorkflowExecution(ctx, getReq)
 	require.NoError(t, err, "Warm run must be readable")
 	got := resp.State.ExecutionInfo
-	assert.Equal(t, int64(3), got.NextEventID, "read came from the slim row")
+	assert.Empty(t, got.AutoResetPoints.Points, "read came from the slim row")
+	assert.Equal(t, int64(3), got.NextEventID)
 	assert.Equal(t, persistence.WorkflowStateCompleted, got.State)
 	assert.Equal(t, persistence.WorkflowCloseStatusCompleted, got.CloseStatus)
 	assert.Equal(t, "tl", got.TaskList)

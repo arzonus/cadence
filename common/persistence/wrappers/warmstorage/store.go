@@ -8,12 +8,14 @@
 // Opt-in: system.enableWarmStorage (per domain ID, default off) gates the move. Reads keep falling back after
 // the flag is turned off, as long as this cluster has ever moved a run: a sentinel row records that, so Warm
 // rows stay readable until retention deletes them. A cluster that never enabled the flag issues no extra
-// queries besides one sentinel read at startup, and doesn't need the closed_executions table at all.
+// queries besides a sentinel read at startup and at most one a minute after a missed read, and doesn't need
+// the closed_executions table at all.
 package warmstorage
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -34,7 +36,11 @@ var sentinelKey = persistence.ClosedExecutionKey{
 	RunID:      "00000000-0000-0000-0000-000000000000",
 }
 
-const sentinelProbeTimeout = 5 * time.Second
+const (
+	sentinelProbeTimeout = 5 * time.Second
+	// a host that started before the cluster's first move, or whose startup probe failed, finds out this way
+	sentinelReprobeInterval = time.Minute
+)
 
 type store struct {
 	persistence.ExecutionStore
@@ -48,6 +54,7 @@ type store struct {
 	// inUse turns the read fallback on for every domain; it never goes back to false in a process
 	inUse           atomic.Bool
 	sentinelWritten atomic.Bool
+	probedAt        atomic.Int64 // unix nanos of the last sentinel probe
 }
 
 // NewExecutionStore wraps an execution store with warm storage.
@@ -73,13 +80,7 @@ func NewExecutionStore(
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), sentinelProbeTimeout)
 	defer cancel()
-	if _, err := closed.GetClosedExecution(ctx, sentinelKey); err == nil {
-		s.inUse.Store(true)
-		s.sentinelWritten.Store(true)
-	} else if !isNotExists(err) {
-		// most likely the table isn't there: fine until someone turns the flag on
-		logger.Info("warm storage is unavailable, closed_executions can't be read", tag.Error(err))
-	}
+	s.probeSentinel(ctx)
 	return s
 }
 
@@ -88,7 +89,7 @@ func (s *store) GetWorkflowExecution(
 	request *persistence.InternalGetWorkflowExecutionRequest,
 ) (*persistence.InternalGetWorkflowExecutionResponse, error) {
 	resp, err := s.ExecutionStore.GetWorkflowExecution(ctx, request)
-	if !isNotExists(err) || !s.fallbackOn(request.DomainID) {
+	if !isNotExists(err) || !s.fallbackOn(ctx, request.DomainID) {
 		return resp, err
 	}
 	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.Execution.WorkflowID, RunID: request.Execution.RunID}
@@ -112,7 +113,7 @@ func (s *store) IsWorkflowExecutionExists(
 	request *persistence.IsWorkflowExecutionExistsRequest,
 ) (*persistence.IsWorkflowExecutionExistsResponse, error) {
 	resp, err := s.ExecutionStore.IsWorkflowExecutionExists(ctx, request)
-	if err != nil || resp.Exists || !s.fallbackOn(request.DomainID) {
+	if err != nil || resp.Exists || !s.fallbackOn(ctx, request.DomainID) {
 		return resp, err
 	}
 	_, err = s.closed.GetClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID})
@@ -126,7 +127,7 @@ func (s *store) IsWorkflowExecutionExists(
 }
 
 func (s *store) DeleteWorkflowExecution(ctx context.Context, request *persistence.DeleteWorkflowExecutionRequest) error {
-	if err := s.ExecutionStore.DeleteWorkflowExecution(ctx, request); err != nil || !s.fallbackOn(request.DomainID) {
+	if err := s.ExecutionStore.DeleteWorkflowExecution(ctx, request); err != nil || !s.fallbackOn(ctx, request.DomainID) {
 		return err
 	}
 	return s.closed.DeleteClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID})
@@ -149,14 +150,22 @@ func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence
 	if resp.State.ExecutionInfo.State != persistence.WorkflowStateCompleted {
 		return nil // e.g. standby hasn't applied the close yet; the run just stays hot
 	}
+	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID}
 	blob, err := toBlob(s.parser, resp.State)
 	if err != nil {
 		return s.moveFailed(request, err)
 	}
+	// read the slim row back before anything is deleted: a row that reads wrong would lose the run
+	slim, err := fromBlob(s.parser, s.serializer, key, blob)
+	if err != nil {
+		return s.moveFailed(request, err)
+	}
+	if got, want := slim.ExecutionInfo.NextEventID, resp.State.ExecutionInfo.NextEventID; got != want {
+		return s.moveFailed(request, fmt.Errorf("next event ID from version histories is %d, row has %d", got, want))
+	}
 	if err := s.writeSentinel(ctx); err != nil {
 		return s.moveFailed(request, err)
 	}
-	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID}
 	// slim row first: if the delete never happens both rows exist, and reads still prefer executions
 	if err := s.closed.InsertClosedExecution(ctx, key, blob); err != nil {
 		return s.moveFailed(request, err)
@@ -173,12 +182,32 @@ func (s *store) Close() {
 	s.ExecutionStore.Close()
 }
 
-func (s *store) fallbackOn(domainID string) bool {
+func (s *store) fallbackOn(ctx context.Context, domainID string) bool {
 	if s.enabled(domainID) {
 		s.inUse.Store(true)
 		return true
 	}
+	if !s.inUse.Load() {
+		s.probeSentinel(ctx)
+	}
 	return s.inUse.Load()
+}
+
+// probeSentinel runs at most once per sentinelReprobeInterval, so a cluster that never enabled warm storage
+// pays one closed_executions read per host per minute, and only on reads that missed.
+func (s *store) probeSentinel(ctx context.Context) {
+	last := s.probedAt.Load()
+	now := time.Now().UnixNano()
+	if last != 0 && now-last < int64(sentinelReprobeInterval) || !s.probedAt.CompareAndSwap(last, now) {
+		return
+	}
+	if _, err := s.closed.GetClosedExecution(ctx, sentinelKey); err == nil {
+		s.inUse.Store(true)
+		s.sentinelWritten.Store(true)
+	} else if !isNotExists(err) {
+		// most likely the table isn't there: fine until someone turns the flag on
+		s.logger.Info("warm storage is unavailable, closed_executions can't be read", tag.Error(err))
+	}
 }
 
 func (s *store) writeSentinel(ctx context.Context) error {

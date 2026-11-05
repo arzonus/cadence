@@ -115,7 +115,7 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "Warm storage on - closed run with nil reset points triggers the rebuild",
+			name: "Warm storage on - closed run read from the slim row (empty reset points) triggers the rebuild",
 			setupMocks: func(mockExecutionCache *execution.MockCache, mockContext *execution.MockContext, mockMutableState *execution.MockMutableState, mockShard *shard.MockContext, domainUUID string) {
 				wfExecution := types.WorkflowExecution{WorkflowID: "test-wf", RunID: "test-run"}
 				mockExecutionCache.EXPECT().GetOrCreateWorkflowExecution(gomock.Any(), domainUUID, wfExecution).Return(mockContext, func(error) {}, nil)
@@ -124,8 +124,9 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 					&persistence.DomainInfo{Name: "test-domain-name"}, &persistence.DomainConfig{}, "test-cluster")).Times(2)
 				mockShard.EXPECT().GetDomainCache().Return(cache.NewMockDomainCache(gomock.NewController(t)))
 				mockMutableState.EXPECT().GetExecutionInfo().Return(&persistence.WorkflowExecutionInfo{
-					State:       persistence.WorkflowStateCompleted,
-					CloseStatus: persistence.WorkflowCloseStatusCompleted,
+					State:           persistence.WorkflowStateCompleted,
+					CloseStatus:     persistence.WorkflowCloseStatusCompleted,
+					AutoResetPoints: &types.ResetPoints{}, // what the serializer returns for the dropped field
 				})
 				mockMutableState.EXPECT().GetStartEvent(gomock.Any()).Return(&types.HistoryEvent{
 					WorkflowExecutionStartedEventAttributes: &types.WorkflowExecutionStartedEventAttributes{},
