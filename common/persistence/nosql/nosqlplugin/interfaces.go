@@ -71,6 +71,7 @@ type (
 		SemaphoreTaskCRUD
 		SemaphoreTokenCRUD
 		HistoryDLQTaskCRUD
+		ClosedExecutionCRUD
 	}
 
 	// ClientErrorChecker checks for common nosql errors on client
@@ -550,6 +551,23 @@ type (
 		// SelectDomainAuditLogs returns audit log entries for a domain and operation type
 		// Returns paginated results ordered by created_time DESC, event_id ASC
 		SelectDomainAuditLogs(ctx context.Context, filter *DomainAuditLogFilter) ([]*DomainAuditLogRow, []byte, error)
+	}
+
+	/***
+	* ClosedExecutionCRUD is for the slim rows of closed runs (warm storage)
+	*
+	* Recommendation: use one table
+	*
+	* Significant columns:
+	* closed_executions: partition key(domainID, workflowID, runID), no range key
+	 */
+	ClosedExecutionCRUD interface {
+		// InsertClosedExecution upserts the row
+		InsertClosedExecution(ctx context.Context, row *ClosedExecutionRow) error
+		// SelectClosedExecution returns the row, or an error where IsNotFoundError is true if it is missing
+		SelectClosedExecution(ctx context.Context, domainID, workflowID, runID string) (*ClosedExecutionRow, error)
+		// DeleteClosedExecution deletes the row, it is not an error if the row is missing
+		DeleteClosedExecution(ctx context.Context, domainID, workflowID, runID string) error
 	}
 
 	/***

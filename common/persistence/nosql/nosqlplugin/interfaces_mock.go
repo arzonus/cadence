@@ -140,6 +140,20 @@ func (mr *MockDBMockRecorder) DeleteActiveClusterSelectionPolicy(ctx, shardID, d
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteActiveClusterSelectionPolicy", reflect.TypeOf((*MockDB)(nil).DeleteActiveClusterSelectionPolicy), ctx, shardID, domainID, workflowID, runID)
 }
 
+// DeleteClosedExecution mocks base method.
+func (m *MockDB) DeleteClosedExecution(ctx context.Context, domainID, workflowID, runID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteClosedExecution", ctx, domainID, workflowID, runID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteClosedExecution indicates an expected call of DeleteClosedExecution.
+func (mr *MockDBMockRecorder) DeleteClosedExecution(ctx, domainID, workflowID, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClosedExecution", reflect.TypeOf((*MockDB)(nil).DeleteClosedExecution), ctx, domainID, workflowID, runID)
+}
+
 // DeleteCrossClusterTask mocks base method.
 func (m *MockDB) DeleteCrossClusterTask(ctx context.Context, shardID int, targetCluster string, taskID int64) error {
 	m.ctrl.T.Helper()
@@ -394,6 +408,20 @@ func (m *MockDB) GrantSemaphoreToken(ctx context.Context, row *SemaphoreOwnershi
 func (mr *MockDBMockRecorder) GrantSemaphoreToken(ctx, row any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GrantSemaphoreToken", reflect.TypeOf((*MockDB)(nil).GrantSemaphoreToken), ctx, row)
+}
+
+// InsertClosedExecution mocks base method.
+func (m *MockDB) InsertClosedExecution(ctx context.Context, row *ClosedExecutionRow) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertClosedExecution", ctx, row)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertClosedExecution indicates an expected call of InsertClosedExecution.
+func (mr *MockDBMockRecorder) InsertClosedExecution(ctx, row any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertClosedExecution", reflect.TypeOf((*MockDB)(nil).InsertClosedExecution), ctx, row)
 }
 
 // InsertConfig mocks base method.
@@ -968,6 +996,21 @@ func (m *MockDB) SelectAllWorkflowExecutions(ctx context.Context, shardID int, p
 func (mr *MockDBMockRecorder) SelectAllWorkflowExecutions(ctx, shardID, pageToken, pageSize any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectAllWorkflowExecutions", reflect.TypeOf((*MockDB)(nil).SelectAllWorkflowExecutions), ctx, shardID, pageToken, pageSize)
+}
+
+// SelectClosedExecution mocks base method.
+func (m *MockDB) SelectClosedExecution(ctx context.Context, domainID, workflowID, runID string) (*ClosedExecutionRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectClosedExecution", ctx, domainID, workflowID, runID)
+	ret0, _ := ret[0].(*ClosedExecutionRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectClosedExecution indicates an expected call of SelectClosedExecution.
+func (mr *MockDBMockRecorder) SelectClosedExecution(ctx, domainID, workflowID, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectClosedExecution", reflect.TypeOf((*MockDB)(nil).SelectClosedExecution), ctx, domainID, workflowID, runID)
 }
 
 // SelectCurrentWorkflow mocks base method.
@@ -1624,6 +1667,20 @@ func (mr *MocktableCRUDMockRecorder) DeleteActiveClusterSelectionPolicy(ctx, sha
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteActiveClusterSelectionPolicy", reflect.TypeOf((*MocktableCRUD)(nil).DeleteActiveClusterSelectionPolicy), ctx, shardID, domainID, workflowID, runID)
 }
 
+// DeleteClosedExecution mocks base method.
+func (m *MocktableCRUD) DeleteClosedExecution(ctx context.Context, domainID, workflowID, runID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteClosedExecution", ctx, domainID, workflowID, runID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteClosedExecution indicates an expected call of DeleteClosedExecution.
+func (mr *MocktableCRUDMockRecorder) DeleteClosedExecution(ctx, domainID, workflowID, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClosedExecution", reflect.TypeOf((*MocktableCRUD)(nil).DeleteClosedExecution), ctx, domainID, workflowID, runID)
+}
+
 // DeleteCrossClusterTask mocks base method.
 func (m *MocktableCRUD) DeleteCrossClusterTask(ctx context.Context, shardID int, targetCluster string, taskID int64) error {
 	m.ctrl.T.Helper()
@@ -1878,6 +1935,20 @@ func (m *MocktableCRUD) GrantSemaphoreToken(ctx context.Context, row *SemaphoreO
 func (mr *MocktableCRUDMockRecorder) GrantSemaphoreToken(ctx, row any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GrantSemaphoreToken", reflect.TypeOf((*MocktableCRUD)(nil).GrantSemaphoreToken), ctx, row)
+}
+
+// InsertClosedExecution mocks base method.
+func (m *MocktableCRUD) InsertClosedExecution(ctx context.Context, row *ClosedExecutionRow) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertClosedExecution", ctx, row)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertClosedExecution indicates an expected call of InsertClosedExecution.
+func (mr *MocktableCRUDMockRecorder) InsertClosedExecution(ctx, row any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertClosedExecution", reflect.TypeOf((*MocktableCRUD)(nil).InsertClosedExecution), ctx, row)
 }
 
 // InsertConfig mocks base method.
@@ -2382,6 +2453,21 @@ func (m *MocktableCRUD) SelectAllWorkflowExecutions(ctx context.Context, shardID
 func (mr *MocktableCRUDMockRecorder) SelectAllWorkflowExecutions(ctx, shardID, pageToken, pageSize any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectAllWorkflowExecutions", reflect.TypeOf((*MocktableCRUD)(nil).SelectAllWorkflowExecutions), ctx, shardID, pageToken, pageSize)
+}
+
+// SelectClosedExecution mocks base method.
+func (m *MocktableCRUD) SelectClosedExecution(ctx context.Context, domainID, workflowID, runID string) (*ClosedExecutionRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectClosedExecution", ctx, domainID, workflowID, runID)
+	ret0, _ := ret[0].(*ClosedExecutionRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectClosedExecution indicates an expected call of SelectClosedExecution.
+func (mr *MocktableCRUDMockRecorder) SelectClosedExecution(ctx, domainID, workflowID, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectClosedExecution", reflect.TypeOf((*MocktableCRUD)(nil).SelectClosedExecution), ctx, domainID, workflowID, runID)
 }
 
 // SelectCurrentWorkflow mocks base method.
@@ -4374,6 +4460,73 @@ func (m *MockDomainAuditLogCRUD) SelectDomainAuditLogs(ctx context.Context, filt
 func (mr *MockDomainAuditLogCRUDMockRecorder) SelectDomainAuditLogs(ctx, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectDomainAuditLogs", reflect.TypeOf((*MockDomainAuditLogCRUD)(nil).SelectDomainAuditLogs), ctx, filter)
+}
+
+// MockClosedExecutionCRUD is a mock of ClosedExecutionCRUD interface.
+type MockClosedExecutionCRUD struct {
+	ctrl     *gomock.Controller
+	recorder *MockClosedExecutionCRUDMockRecorder
+	isgomock struct{}
+}
+
+// MockClosedExecutionCRUDMockRecorder is the mock recorder for MockClosedExecutionCRUD.
+type MockClosedExecutionCRUDMockRecorder struct {
+	mock *MockClosedExecutionCRUD
+}
+
+// NewMockClosedExecutionCRUD creates a new mock instance.
+func NewMockClosedExecutionCRUD(ctrl *gomock.Controller) *MockClosedExecutionCRUD {
+	mock := &MockClosedExecutionCRUD{ctrl: ctrl}
+	mock.recorder = &MockClosedExecutionCRUDMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockClosedExecutionCRUD) EXPECT() *MockClosedExecutionCRUDMockRecorder {
+	return m.recorder
+}
+
+// DeleteClosedExecution mocks base method.
+func (m *MockClosedExecutionCRUD) DeleteClosedExecution(ctx context.Context, domainID, workflowID, runID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteClosedExecution", ctx, domainID, workflowID, runID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteClosedExecution indicates an expected call of DeleteClosedExecution.
+func (mr *MockClosedExecutionCRUDMockRecorder) DeleteClosedExecution(ctx, domainID, workflowID, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteClosedExecution", reflect.TypeOf((*MockClosedExecutionCRUD)(nil).DeleteClosedExecution), ctx, domainID, workflowID, runID)
+}
+
+// InsertClosedExecution mocks base method.
+func (m *MockClosedExecutionCRUD) InsertClosedExecution(ctx context.Context, row *ClosedExecutionRow) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertClosedExecution", ctx, row)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertClosedExecution indicates an expected call of InsertClosedExecution.
+func (mr *MockClosedExecutionCRUDMockRecorder) InsertClosedExecution(ctx, row any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertClosedExecution", reflect.TypeOf((*MockClosedExecutionCRUD)(nil).InsertClosedExecution), ctx, row)
+}
+
+// SelectClosedExecution mocks base method.
+func (m *MockClosedExecutionCRUD) SelectClosedExecution(ctx context.Context, domainID, workflowID, runID string) (*ClosedExecutionRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectClosedExecution", ctx, domainID, workflowID, runID)
+	ret0, _ := ret[0].(*ClosedExecutionRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SelectClosedExecution indicates an expected call of SelectClosedExecution.
+func (mr *MockClosedExecutionCRUDMockRecorder) SelectClosedExecution(ctx, domainID, workflowID, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectClosedExecution", reflect.TypeOf((*MockClosedExecutionCRUD)(nil).SelectClosedExecution), ctx, domainID, workflowID, runID)
 }
 
 // MockSemaphoreMetadataCRUD is a mock of SemaphoreMetadataCRUD interface.
