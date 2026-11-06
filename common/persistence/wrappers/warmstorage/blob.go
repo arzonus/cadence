@@ -27,6 +27,28 @@ func toBlob(parser serialization.Parser, state *persistence.InternalWorkflowMuta
 	return &blob, nil
 }
 
+// versionRange returns the versions of the first and last event of the current branch: the start version and
+// last write version the stores keep next to the row.
+func versionRange(serializer persistence.PayloadSerializer, state *persistence.InternalWorkflowMutableState) (start, last int64, err error) {
+	internal, err := serializer.DeserializeVersionHistories(state.VersionHistories)
+	if err != nil {
+		return 0, 0, err
+	}
+	current, err := persistence.NewVersionHistoriesFromInternalType(internal).GetCurrentVersionHistory()
+	if err != nil {
+		return 0, 0, err
+	}
+	first, err := current.GetFirstItem()
+	if err != nil {
+		return 0, 0, err
+	}
+	lastItem, err := current.GetLastItem()
+	if err != nil {
+		return 0, 0, err
+	}
+	return first.Version, lastItem.Version, nil
+}
+
 // fromBlob rebuilds the state the stores would return for the run, with empty pending-work maps.
 func fromBlob(
 	parser serialization.Parser,

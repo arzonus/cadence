@@ -56,9 +56,9 @@ func ValidateCreateWorkflowModeState(
 		return nil
 
 	case CreateWorkflowModeZombie:
+		// a completed run is allowed: warm storage puts a moved run's row back this way, without a current row write
 		if workflowState == WorkflowStateCreated ||
-			workflowState == WorkflowStateRunning ||
-			workflowState == WorkflowStateCompleted {
+			workflowState == WorkflowStateRunning {
 			return newInvalidCreateWorkflowMode(
 				mode,
 				workflowState,

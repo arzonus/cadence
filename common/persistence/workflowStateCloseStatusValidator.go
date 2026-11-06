@@ -59,8 +59,9 @@ func ValidateCreateWorkflowStateCloseStatus(
 		return err
 	}
 
-	// validate workflow state & close status
-	if state == WorkflowStateCompleted || closeStatus != WorkflowCloseStatusNone {
+	// A completed run (and only with a close status) is accepted here, but the create mode check rejects it for every
+	// mode except zombie, which warm storage uses to put a moved run back.
+	if (state == WorkflowStateCompleted) == (closeStatus == WorkflowCloseStatusNone) {
 		return &types.InternalServiceError{
 			Message: fmt.Sprintf("Create workflow with invalid state: %v or close status: %v",
 				state, closeStatus),

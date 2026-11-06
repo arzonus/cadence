@@ -86,7 +86,7 @@ func (s *validateOperationWorkflowModeStateSuite) TestCreateMode_BypassCurrent()
 	stateToError := map[int]bool{
 		WorkflowStateCreated:   true,
 		WorkflowStateRunning:   true,
-		WorkflowStateCompleted: true,
+		WorkflowStateCompleted: false, // warm storage restores a moved run this way
 		WorkflowStateZombie:    false,
 	}
 

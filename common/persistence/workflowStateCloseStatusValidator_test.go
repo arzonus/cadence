@@ -90,7 +90,6 @@ func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_Workf
 
 func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_WorkflowStateCompleted() {
 	closeStatuses := []int{
-		WorkflowCloseStatusNone,
 		WorkflowCloseStatusCompleted,
 		WorkflowCloseStatusFailed,
 		WorkflowCloseStatusCanceled,
@@ -99,8 +98,10 @@ func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_Workf
 		WorkflowCloseStatusTimedOut,
 	}
 
+	s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCompleted, WorkflowCloseStatusNone))
+	// the create mode check is what keeps these out of every mode but zombie
 	for _, closeStatus := range closeStatuses {
-		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCompleted, closeStatus))
+		s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCompleted, closeStatus))
 	}
 }
 

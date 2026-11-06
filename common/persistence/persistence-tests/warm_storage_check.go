@@ -61,6 +61,17 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 	}
 
 	require.NoError(t, mgr.MoveToClosedExecutions(ctx, req), "second delivery of the close task is a no-op")
+
+	// a late write to the moved run (replication backfill, refresh, a child start finding its closed child) puts
+	// the row back and lands, instead of failing on the missing row
+	condition := info.NextEventID
+	info.NextEventID++
+	require.NoError(t, s.UpdateWorkflowExecution(ctx, info, state.ExecutionStats, state.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil))
+	resp, err = mgr.GetWorkflowExecution(ctx, getReq)
+	require.NoError(t, err)
+	assert.Equal(t, condition+1, resp.State.ExecutionInfo.NextEventID, "the late write is not lost")
+	assert.False(t, resp.State.ExecutionInfo.AutoResetPointsDropped, "and the run is read from executions again")
+
 	require.NoError(t, mgr.DeleteWorkflowExecution(ctx, req))
 	_, err = mgr.GetWorkflowExecution(ctx, getReq)
 	assert.IsType(t, &types.EntityNotExistsError{}, err, "retention removes both rows")

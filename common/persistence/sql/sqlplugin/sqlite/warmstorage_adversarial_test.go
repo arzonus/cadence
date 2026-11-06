@@ -4,7 +4,6 @@ package sqlite
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -140,28 +139,42 @@ func TestAdversarial_MoveConcurrently(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestAdversarial_WriteToMovedRun records what the real SQL store returns for writes onto a moved run.
+// TestAdversarial_WriteToMovedRun (VERIFICATION row 11, A8): an update or a conflict resolution that targets a
+// moved run puts the row back and lands, so no event or task is lost (it used to fail with a missing row).
 func TestAdversarial_WriteToMovedRun(t *testing.T) {
-	e := newWarmEnv(t)
-	ctx := context.Background()
-	e.create(t)
-	e.closeRun(t)
-	st, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
-	require.NoError(t, err)
-	require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
+	writes := map[string]func(e *warmEnv, st *persistence.WorkflowMutableState) error{
+		"update": func(e *warmEnv, st *persistence.WorkflowMutableState) error {
+			info := st.ExecutionInfo
+			condition := info.NextEventID
+			info.NextEventID++
+			return e.base.UpdateWorkflowExecution(context.Background(), info, st.ExecutionStats, st.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil)
+		},
+		"conflict resolve": func(e *warmEnv, st *persistence.WorkflowMutableState) error {
+			info := st.ExecutionInfo
+			condition := info.NextEventID
+			info.NextEventID++
+			return e.base.ConflictResolveWorkflowExecution(context.Background(), info, st.ExecutionStats, condition, nil, nil, nil, nil, nil, nil, st.VersionHistories)
+		},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			e := newWarmEnv(t)
+			ctx := context.Background()
+			e.create(t)
+			e.closeRun(t)
+			st, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
+			require.NoError(t, err)
+			next := st.ExecutionInfo.NextEventID
+			require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
 
-	info := st.ExecutionInfo
-	err = e.base.UpdateWorkflowExecution(ctx, info, &persistence.ExecutionStats{}, st.VersionHistories, nil, nil, info.NextEventID, nil, nil, nil, nil, nil)
-	t.Logf("UpdateWorkflowExecution on moved run: %T %v", err, err)
-	require.Error(t, err)
-	var cond *persistence.ConditionFailedError
-	var notExists *types.EntityNotExistsError
-	assert.True(t, errors.As(err, &cond) || errors.As(err, &notExists),
-		"want ConditionFailed/NotExists so callers stop retrying, got %T", err)
+			require.NoError(t, write(e, st))
 
-	err = e.base.ConflictResolveWorkflowExecution(ctx, info, &persistence.ExecutionStats{}, info.NextEventID, nil, nil, nil, nil, nil, nil, st.VersionHistories)
-	t.Logf("ConflictResolve on moved run: %T %v", err, err)
-	require.Error(t, err)
+			got, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
+			require.NoError(t, err)
+			assert.Equal(t, next+1, got.ExecutionInfo.NextEventID, "the write is not lost")
+			assert.False(t, got.ExecutionInfo.AutoResetPointsDropped, "the run is read from executions again")
+		})
+	}
 }
 
 // freshManager builds a new decorated manager over the same DB, i.e. a restarted process.
