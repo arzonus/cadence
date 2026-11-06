@@ -1,0 +1,10 @@
+CREATE TABLE closed_executions
+(
+    domain_id     BINARY(16)   NOT NULL,
+    workflow_id   VARCHAR(255) NOT NULL,
+    run_id        BINARY(16)   NOT NULL,
+    --
+    data          MEDIUMBLOB   NOT NULL,
+    data_encoding VARCHAR(16)  NOT NULL,
+    PRIMARY KEY (domain_id, workflow_id, run_id)
+);
