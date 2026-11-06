@@ -1,0 +1,156 @@
+# Warm storage replication scenario (see research/replication-lag.md).
+# Run: ./simulation/replication/run.sh --scenario warmshadow
+# The dynamic config config/dynamicconfig/replication_simulation_warmshadow.yml sets system.warmStorageMode to "shadow" in both clusters.
+# Close kinds with warm storage in shadow mode in both clusters (hot rows stay, slim copies are compared on read), no lag: complete, fail, timeout, terminate, continue as new, cron.
+
+clusters:
+  cluster0:
+    grpcEndpoint: "cadence-cluster0:7833"
+  cluster1:
+    grpcEndpoint: "cadence-cluster1:7833"
+
+primaryCluster: "cluster0"
+
+domains:
+  test-domain:
+    activeClusterName: cluster0
+
+operations:
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: ws-complete
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 0s
+    workflowType: fail-workflow
+    workflowID: ws-fail
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: ws-timeout
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 8s
+    activityCount: 20
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: ws-terminate
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 20
+  - op: terminate_workflow
+    at: 6s
+    workflowID: ws-terminate
+    cluster: cluster0
+    domain: test-domain
+  - op: start_workflow
+    at: 0s
+    workflowType: continue-as-new-workflow
+    workflowID: ws-can
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: ws-cron
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 300s
+    activityCount: 1
+    cronSchedule: "* * * * *"
+  - op: validate
+    at: 30s
+    workflowID: ws-complete
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 30s
+    workflowID: ws-fail
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: failed
+  - op: validate
+    at: 30s
+    workflowID: ws-timeout
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: timed-out
+  - op: validate
+    at: 30s
+    workflowID: ws-terminate
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: terminated
+  - op: validate
+    at: 30s
+    workflowID: ws-can
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: terminate_workflow
+    at: 75s
+    workflowID: ws-cron
+    cluster: cluster0
+    domain: test-domain
+  - op: compare_clusters
+    at: 135s
+    workflowID: ws-complete
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 135s
+    workflowID: ws-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 135s
+    workflowID: ws-timeout
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 135s
+    workflowID: ws-terminate
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 135s
+    workflowID: ws-can
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 135s
+    workflowID: ws-cron
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: validate_dlq_empty
+    at: 140s
+    cluster: cluster0
+  - op: validate_dlq_empty
+    at: 140s
+    cluster: cluster1
+  - op: marker
+    at: 145s
+    marker: rows-final
