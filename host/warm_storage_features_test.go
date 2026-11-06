@@ -600,11 +600,11 @@ func (s *IntegrationSuite) TestWarmStorage_ParentClosePolicies_SLOW() {
 				poll, err := s.Engine.PollForDecisionTask(ctx, &types.PollForDecisionTaskRequest{Domain: s.DomainName, TaskList: &types.TaskList{Name: child}, Identity: "warm"})
 				cancel()
 				s.NoError(err)
-				var types_ []string
+				var eventTypes []string
 				for _, e := range poll.History.Events {
-					types_ = append(types_, e.EventType.String())
+					eventTypes = append(eventTypes, e.EventType.String())
 				}
-				out = append(out, n+"/childhistory="+strings.Join(types_, ","))
+				out = append(out, n+"/childhistory="+strings.Join(eventTypes, ","))
 				ctx, cancel = createContext()
 				_, err = s.Engine.RespondDecisionTaskCompleted(ctx, &types.RespondDecisionTaskCompletedRequest{TaskToken: poll.TaskToken, Identity: "warm", Decisions: []*types.Decision{{
 					DecisionType: types.DecisionTypeCancelWorkflowExecution.Ptr(),
