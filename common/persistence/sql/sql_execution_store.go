@@ -213,8 +213,12 @@ func (m *sqlExecutionStore) createWorkflowExecutionTx(
 			}
 
 		case p.CreateWorkflowModeZombie:
-			// zombie workflow creation with existence of current record, this is a noop
-			if err := assertRunIDMismatch(serialization.MustParseUUID(executionInfo.RunID), row.RunID); err != nil {
+			// zombie workflow creation with existence of current record, this is a noop.
+			// Warm storage restoring a moved run may restore the current run itself.
+			if newWorkflow.RestoreClosedRun {
+				break
+			}
+			if err := assertRunIDMismatch(runID, row.RunID); err != nil {
 				return nil, err
 			}
 

@@ -1026,6 +1026,54 @@ func TestCreateWorkflowExecution(t *testing.T) {
 			want: &persistence.CreateWorkflowExecutionResponse{},
 		},
 		{
+			name: "Success - warm storage restores the current run itself",
+			req: &persistence.InternalCreateWorkflowExecutionRequest{
+				ShardID: common.IntPtr(0),
+				RangeID: 1,
+				Mode:    persistence.CreateWorkflowModeZombie,
+				NewWorkflowSnapshot: persistence.InternalWorkflowSnapshot{
+					ExecutionInfo: &persistence.InternalWorkflowExecutionInfo{
+						RunID:       "abdcea69-61d5-44c3-9d55-afe23505a54a",
+						State:       persistence.WorkflowStateCompleted,
+						CloseStatus: persistence.WorkflowCloseStatusCompleted,
+					},
+					RestoreClosedRun: true,
+				},
+			},
+			lockCurrentExecutionIfExistsFn: func(context.Context, sqlplugin.Tx, int, serialization.UUID, string) (*sqlplugin.CurrentExecutionsRow, error) {
+				return &sqlplugin.CurrentExecutionsRow{
+					RunID: serialization.MustParseUUID("abdcea69-61d5-44c3-9d55-afe23505a54a"),
+				}, nil
+			},
+			createOrUpdateCurrentExecutionFn: func(context.Context, sqlplugin.Tx, persistence.CreateWorkflowMode, int, serialization.UUID, string, serialization.UUID, int, int, string, int64, int64) error {
+				return nil
+			},
+			applyWorkflowSnapshotTxAsNewFn: func(context.Context, sqlplugin.Tx, int, *persistence.InternalWorkflowSnapshot, serialization.Parser, serialization.TaskSerializer) error {
+				return nil
+			},
+			want: &persistence.CreateWorkflowExecutionResponse{},
+		},
+		{
+			name: "Error - zombie create of the current run without the warm storage restore",
+			req: &persistence.InternalCreateWorkflowExecutionRequest{
+				ShardID: common.IntPtr(0),
+				RangeID: 1,
+				Mode:    persistence.CreateWorkflowModeZombie,
+				NewWorkflowSnapshot: persistence.InternalWorkflowSnapshot{
+					ExecutionInfo: &persistence.InternalWorkflowExecutionInfo{
+						RunID: "abdcea69-61d5-44c3-9d55-afe23505a54a",
+						State: persistence.WorkflowStateZombie,
+					},
+				},
+			},
+			lockCurrentExecutionIfExistsFn: func(context.Context, sqlplugin.Tx, int, serialization.UUID, string) (*sqlplugin.CurrentExecutionsRow, error) {
+				return &sqlplugin.CurrentExecutionsRow{
+					RunID: serialization.MustParseUUID("abdcea69-61d5-44c3-9d55-afe23505a54a"),
+				}, nil
+			},
+			wantErr: true,
+		},
+		{
 			name: "Error - mode state validation failed",
 			req: &persistence.InternalCreateWorkflowExecutionRequest{
 				ShardID: common.IntPtr(0),
