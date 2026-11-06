@@ -1,0 +1,161 @@
+# Warm storage replication scenario: one domain with mode "on", one with "shadow", one with "off" (see research/replication-lag.md).
+# The domain IDs are generated at registration, so the run script reads them after the "domains-ready" marker and rewrites
+# the system.warmStorageMode block of the dynamic config with one domainID constraint per domain; the servers reload it
+# within their 60s poll interval, which is why the workflows start at 95s. The checked-in dynamic config starts with mode "off".
+# Without that rewrite (run.sh alone) every domain stays "off".
+
+clusters:
+  cluster0:
+    grpcEndpoint: "cadence-cluster0:7833"
+  cluster1:
+    grpcEndpoint: "cadence-cluster1:7833"
+
+primaryCluster: "cluster0"
+
+domains:
+  dom-on:
+    activeClusterName: cluster0
+  dom-shadow:
+    activeClusterName: cluster0
+  dom-off:
+    activeClusterName: cluster0
+
+operations:
+  - op: marker
+    at: 5s
+    marker: domains-ready
+  - op: start_workflow
+    at: 95s
+    workflowType: activity-loop-workflow
+    workflowID: on-complete
+    cluster: cluster0
+    domain: dom-on
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 95s
+    workflowType: fail-workflow
+    workflowID: on-fail
+    cluster: cluster0
+    domain: dom-on
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: start_workflow
+    at: 95s
+    workflowType: continue-as-new-workflow
+    workflowID: on-can
+    cluster: cluster0
+    domain: dom-on
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 95s
+    workflowType: activity-loop-workflow
+    workflowID: shadow-complete
+    cluster: cluster0
+    domain: dom-shadow
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 95s
+    workflowType: fail-workflow
+    workflowID: shadow-fail
+    cluster: cluster0
+    domain: dom-shadow
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: start_workflow
+    at: 95s
+    workflowType: continue-as-new-workflow
+    workflowID: shadow-can
+    cluster: cluster0
+    domain: dom-shadow
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 95s
+    workflowType: activity-loop-workflow
+    workflowID: off-complete
+    cluster: cluster0
+    domain: dom-off
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 95s
+    workflowType: fail-workflow
+    workflowID: off-fail
+    cluster: cluster0
+    domain: dom-off
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: start_workflow
+    at: 95s
+    workflowType: continue-as-new-workflow
+    workflowID: off-can
+    cluster: cluster0
+    domain: dom-off
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: marker
+    at: 125s
+    marker: rows-mid
+  - op: compare_clusters
+    at: 130s
+    workflowID: on-complete
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-on
+  - op: compare_clusters
+    at: 130s
+    workflowID: on-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-on
+  - op: compare_clusters
+    at: 130s
+    workflowID: on-can
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-on
+  - op: compare_clusters
+    at: 130s
+    workflowID: shadow-complete
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-shadow
+  - op: compare_clusters
+    at: 130s
+    workflowID: shadow-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-shadow
+  - op: compare_clusters
+    at: 130s
+    workflowID: shadow-can
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-shadow
+  - op: compare_clusters
+    at: 130s
+    workflowID: off-complete
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-off
+  - op: compare_clusters
+    at: 130s
+    workflowID: off-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-off
+  - op: compare_clusters
+    at: 130s
+    workflowID: off-can
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: dom-off
+  - op: validate_dlq_empty
+    at: 140s
+    cluster: cluster0
+  - op: validate_dlq_empty
+    at: 140s
+    cluster: cluster1
+  - op: marker
+    at: 145s
+    marker: rows-final
