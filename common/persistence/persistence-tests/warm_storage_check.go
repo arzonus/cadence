@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/uber/cadence/common"
-	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/persistence/client"
@@ -20,7 +19,7 @@ import (
 func CheckWarmStorage(t *testing.T, s *TestBase) {
 	ctx := t.Context()
 	dc := s.DynamicConfiguration
-	dc.EnableWarmStorage = dynamicproperties.GetBoolPropertyFnFilteredByDomainID(true)
+	dc.WarmStorageMode = func(string) string { return "on" }
 	cfg := s.PersistenceConfig
 	mgr, err := client.NewFactory(&cfg, nil, s.ClusterMetadata.GetCurrentClusterName(), metrics.NewNoopMetricsClient(), s.Logger, &dc).NewExecutionManager()
 	require.NoError(t, err)

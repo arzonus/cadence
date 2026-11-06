@@ -12,7 +12,6 @@ import (
 
 	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/constants"
-	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
@@ -32,9 +31,8 @@ type testEnv struct {
 	full   *persistence.InternalWorkflowMutableState
 }
 
-// newTestStore builds the decorator. sentinel is what reading the sentinel returns whenever the store needs it:
-// nil means the cluster has Warm rows and this host already knows.
-func newTestStore(t *testing.T, flagOn bool, sentinel error) (*store, *testEnv) {
+// newTestStore builds the decorator with one mode for every domain.
+func newTestStore(t *testing.T, mode string) (*store, *testEnv) {
 	ctrl := gomock.NewController(t)
 	env := &testEnv{
 		inner:  persistence.NewMockExecutionStore(ctrl),
@@ -44,15 +42,9 @@ func newTestStore(t *testing.T, flagOn bool, sentinel error) (*store, *testEnv) 
 	}
 	env.full = closedState(t, env.key)
 	dc := persistence.NewDefaultDynamicConfiguration()
-	dc.EnableWarmStorage = dynamicproperties.GetBoolPropertyFnFilteredByDomainID(flagOn)
+	dc.WarmStorageMode = func(string) string { return mode }
 	s := NewExecutionStore(env.inner, env.closed, testParser(t), dc, testlogger.New(t),
 		metrics.NewClient(env.scope, metrics.History, metrics.MigrationConfig{})).(*store)
-	if sentinel == nil {
-		s.inUse.Store(true)
-		s.sentinelWritten.Store(true)
-	} else {
-		env.closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(nil, sentinel).AnyTimes()
-	}
 	return s, env
 }
 
@@ -91,43 +83,9 @@ func (e *testEnv) counter(name string) int64 {
 	return total
 }
 
-// A host learns about Warm rows lazily, from the sentinel, and only when it needs the fallback.
-func TestSentinelIsReadOnDemand(t *testing.T) {
-	tests := map[string]struct {
-		sentinel  error
-		wantInUse bool
-	}{
-		"sentinel found: cluster has Warm rows": {sentinel: nil, wantInUse: true},
-		"sentinel missing: never enabled":       {sentinel: errNotExists, wantInUse: false},
-		"table missing: never enabled":          {sentinel: errDB, wantInUse: false},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			s := newUnprobedStore(t, tc.sentinel, 1)
-			assert.False(t, s.inUse.Load(), "nothing is read at construction")
-			assert.Equal(t, tc.wantInUse, s.fallbackOn(context.Background(), testKey().DomainID))
-		})
-	}
-}
-
-// newUnprobedStore is a flag-off store whose closed store answers exactly reads sentinel reads with sentinel.
-func newUnprobedStore(t *testing.T, sentinel error, reads int) *store {
-	ctrl := gomock.NewController(t)
-	closed := persistence.NewMockClosedExecutionStore(ctrl)
-	var blob *persistence.DataBlob
-	if sentinel == nil {
-		blob = &persistence.DataBlob{}
-	}
-	closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(blob, sentinel).Times(reads)
-	dc := persistence.NewDefaultDynamicConfiguration()
-	dc.EnableWarmStorage = dynamicproperties.GetBoolPropertyFnFilteredByDomainID(false)
-	return NewExecutionStore(persistence.NewMockExecutionStore(ctrl), closed, testParser(t), dc, testlogger.New(t), nil).(*store)
-}
-
 func TestGetWorkflowExecution(t *testing.T) {
 	tests := map[string]struct {
-		flagOn    bool
-		sentinel  error
+		mode      string
 		setup     func(t *testing.T, e *testEnv)
 		wantSlim  bool
 		wantErr   error
@@ -135,29 +93,29 @@ func TestGetWorkflowExecution(t *testing.T) {
 		wantHits  int64
 	}{
 		"open or not yet moved run comes from executions, closed table untouched": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
 			wantFound: true,
 		},
-		"flag off and never enabled: miss is returned as is": {
-			flagOn: false, sentinel: errNotExists,
+		"off: miss is returned as is, closed table untouched": {
+			mode: "off",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
 			},
 			wantErr: errNotExists,
 		},
-		"flag on: Warm run is read from closed_executions": {
-			flagOn: true, sentinel: errNotExists,
+		"on: Warm run is read from closed_executions": {
+			mode: "on",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil)
 			},
 			wantSlim: true, wantHits: 1,
 		},
-		"flag turned off after Warm rows were written: still readable": {
-			flagOn: false, sentinel: nil,
+		"read_only: Warm run is still read from closed_executions": {
+			mode: "read_only",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil)
@@ -165,7 +123,7 @@ func TestGetWorkflowExecution(t *testing.T) {
 			wantSlim: true, wantHits: 1,
 		},
 		"missing run: original not-exists error": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(nil, &types.EntityNotExistsError{Message: "closed"})
@@ -173,14 +131,14 @@ func TestGetWorkflowExecution(t *testing.T) {
 			wantErr: errNotExists,
 		},
 		"executions error other than not-exists is not masked": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errDB)
 			},
 			wantErr: errDB,
 		},
 		"closed_executions error is returned": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(nil, errDB)
@@ -190,7 +148,7 @@ func TestGetWorkflowExecution(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s, e := newTestStore(t, tc.flagOn, tc.sentinel)
+			s, e := newTestStore(t, tc.mode)
 			tc.setup(t, e)
 			resp, err := s.GetWorkflowExecution(context.Background(), e.getRequest())
 			assert.Equal(t, tc.wantErr, err)
@@ -210,20 +168,20 @@ func TestGetWorkflowExecution(t *testing.T) {
 
 func TestIsWorkflowExecutionExists(t *testing.T) {
 	tests := map[string]struct {
-		flagOn  bool
+		mode    string
 		setup   func(e *testEnv)
 		want    bool
 		wantErr error
 	}{
 		"in executions": {
-			flagOn: true,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(&persistence.IsWorkflowExecutionExistsResponse{Exists: true}, nil)
 			},
 			want: true,
 		},
 		"Warm run exists, so the fixer won't treat its current row as orphaned": {
-			flagOn: true,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(&persistence.IsWorkflowExecutionExistsResponse{}, nil)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(&persistence.DataBlob{}, nil)
@@ -231,26 +189,27 @@ func TestIsWorkflowExecutionExists(t *testing.T) {
 			want: true,
 		},
 		"missing everywhere": {
-			flagOn: true,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(&persistence.IsWorkflowExecutionExistsResponse{}, nil)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(nil, errNotExists)
 			},
 		},
-		"flag off: no closed lookup": {
+		"off: no closed lookup": {
+			mode: "off",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(&persistence.IsWorkflowExecutionExistsResponse{}, nil)
 			},
 		},
 		"store error (SQL doesn't implement it) passes through": {
-			flagOn: true,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(nil, errDB)
 			},
 			wantErr: errDB,
 		},
 		"closed lookup error": {
-			flagOn: true,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(&persistence.IsWorkflowExecutionExistsResponse{}, nil)
 				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(nil, errDB)
@@ -260,7 +219,7 @@ func TestIsWorkflowExecutionExists(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s, e := newTestStore(t, tc.flagOn, errNotExists)
+			s, e := newTestStore(t, tc.mode)
 			tc.setup(e)
 			resp, err := s.IsWorkflowExecutionExists(context.Background(), &persistence.IsWorkflowExecutionExistsRequest{
 				DomainID: e.key.DomainID, WorkflowID: e.key.WorkflowID, RunID: e.key.RunID,
@@ -275,19 +234,18 @@ func TestIsWorkflowExecutionExists(t *testing.T) {
 
 func TestDeleteWorkflowExecution(t *testing.T) {
 	tests := map[string]struct {
-		flagOn   bool
-		sentinel error
-		setup    func(e *testEnv)
-		wantErr  error
+		mode    string
+		setup   func(e *testEnv)
+		wantErr error
 	}{
-		"flag off, never enabled: only executions": {
-			sentinel: errNotExists,
+		"off: only executions": {
+			mode: "off",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil)
 			},
 		},
 		"retention deletes both rows": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(e *testEnv) {
 				gomock.InOrder(
 					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil),
@@ -295,22 +253,22 @@ func TestDeleteWorkflowExecution(t *testing.T) {
 				)
 			},
 		},
-		"flag turned off after Warm rows were written: still deletes both": {
-			sentinel: nil,
+		"read_only: still deletes both": {
+			mode: "read_only",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil)
 				e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(nil)
 			},
 		},
 		"executions delete fails: closed row kept for the retry": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(errDB)
 			},
 			wantErr: errDB,
 		},
 		"closed delete fails: error so retention retries": {
-			flagOn: true, sentinel: errNotExists,
+			mode: "on",
 			setup: func(e *testEnv) {
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil)
 				e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(errDB)
@@ -320,7 +278,7 @@ func TestDeleteWorkflowExecution(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s, e := newTestStore(t, tc.flagOn, tc.sentinel)
+			s, e := newTestStore(t, tc.mode)
 			tc.setup(e)
 			assert.Equal(t, tc.wantErr, s.DeleteWorkflowExecution(context.Background(), e.deleteRequest()))
 		})
@@ -329,28 +287,13 @@ func TestDeleteWorkflowExecution(t *testing.T) {
 
 func TestMoveToClosedExecutions(t *testing.T) {
 	tests := map[string]struct {
-		sentinel      error
 		setup         func(t *testing.T, e *testEnv)
 		wantMoves     int64
 		wantFailures  int64
 		wantConflicts int64
 		wantSkipped   int64
-		wantInUse     bool
 	}{
-		"moves: sentinel, then slim row, then delete": {
-			sentinel: errNotExists,
-			setup: func(t *testing.T, e *testEnv) {
-				gomock.InOrder(
-					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
-					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), sentinelKey, gomock.Any()).Return(nil),
-					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, e.slimBlob(t)).Return(nil),
-					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(nil),
-				)
-			},
-			wantMoves: 1, wantInUse: true,
-		},
-		"sentinel already there: not rewritten": {
-			sentinel: nil,
+		"moves: slim row, then delete": {
 			setup: func(t *testing.T, e *testEnv) {
 				gomock.InOrder(
 					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
@@ -358,48 +301,40 @@ func TestMoveToClosedExecutions(t *testing.T) {
 					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(nil),
 				)
 			},
-			wantMoves: 1, wantInUse: true,
+			wantMoves: 1,
 		},
 		"close task delivered again after the move: no-op": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
 			},
-			wantInUse: true,
 		},
 		"open run (standby hasn't closed it yet) is skipped quietly": {
-			sentinel: errNotExists,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.ExecutionInfo.State = persistence.WorkflowStateRunning
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
 		},
 		"zombie run is skipped quietly": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.ExecutionInfo.State = persistence.WorkflowStateZombie
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
-			wantInUse: true,
 		},
 		"closed with an activity still in flight stays hot: Describe lists it": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.ActivityInfos = map[int64]*persistence.InternalActivityInfo{5: {ScheduleID: 5}}
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
-			wantSkipped: 1, wantInUse: true,
+			wantSkipped: 1,
 		},
 		"closed with a child still open stays hot: Describe lists it": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.ChildExecutionInfos = map[int64]*persistence.InternalChildExecutionInfo{7: {InitiatedID: 7}}
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
-			wantSkipped: 1, wantInUse: true,
+			wantSkipped: 1,
 		},
 		"slim row that wouldn't read back (branch without items) is never written": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				blob, err := persistence.NewPayloadSerializer().SerializeVersionHistories(&types.VersionHistories{
 					Histories: []*types.VersionHistory{{BranchToken: []byte("b")}},
@@ -408,18 +343,16 @@ func TestMoveToClosedExecutions(t *testing.T) {
 				e.full.VersionHistories = blob
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
-			wantFailures: 1, wantInUse: true,
+			wantFailures: 1,
 		},
 		"row NextEventID disagrees with version histories: stays hot": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.ExecutionInfo.NextEventID = lastEventID + 5
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
-			wantFailures: 1, wantInUse: true,
+			wantFailures: 1,
 		},
 		"legacy run without version histories stays hot": {
-			sentinel: errNotExists,
 			setup: func(t *testing.T, e *testEnv) {
 				e.full.VersionHistories = nil
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
@@ -427,30 +360,19 @@ func TestMoveToClosedExecutions(t *testing.T) {
 			wantFailures: 1,
 		},
 		"read fails: run stays hot, close task not failed": {
-			sentinel: errNotExists,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errDB)
 			},
 			wantFailures: 1,
 		},
-		"table missing (sentinel write fails): run stays hot": {
-			sentinel: errDB,
-			setup: func(t *testing.T, e *testEnv) {
-				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
-				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), sentinelKey, gomock.Any()).Return(errDB)
-			},
-			wantFailures: 1,
-		},
 		"slim write fails: executions row is NOT deleted": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(errDB)
 			},
-			wantFailures: 1, wantInUse: true,
+			wantFailures: 1,
 		},
 		"a writer got in since the read: executions row is the truth, stale slim row is dropped": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				gomock.InOrder(
 					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
@@ -459,95 +381,299 @@ func TestMoveToClosedExecutions(t *testing.T) {
 					e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(nil),
 				)
 			},
-			wantConflicts: 1, wantInUse: true,
+			wantConflicts: 1,
 		},
 		"a writer got in and the stale slim row can't be dropped": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil)
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(&persistence.ConditionFailedError{})
 				e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(errDB)
 			},
-			wantConflicts: 1, wantFailures: 1, wantInUse: true,
+			wantConflicts: 1, wantFailures: 1,
 		},
 		"another mover finished first: the slim row it wrote is kept": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil)
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(errNotExists)
 			},
-			wantInUse: true,
 		},
 		"delete fails after slim write: both rows exist, reads prefer executions": {
-			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil)
 				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(errDB)
 			},
-			wantFailures: 1, wantInUse: true,
+			wantFailures: 1,
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// flag off on purpose: the caller gates the move, and the decorator must not re-check it
-			s, e := newTestStore(t, false, tc.sentinel)
+			s, e := newTestStore(t, "on")
 			tc.setup(t, e)
 			assert.NoError(t, s.MoveToClosedExecutions(context.Background(), e.deleteRequest()))
 			assert.Equal(t, tc.wantMoves, e.counter("warm_storage_moves"))
 			assert.Equal(t, tc.wantFailures, e.counter("warm_storage_move_failures"))
 			assert.Equal(t, tc.wantConflicts, e.counter("warm_storage_move_conflicts"))
 			assert.Equal(t, tc.wantSkipped, e.counter("warm_storage_moves_skipped"))
-			assert.Equal(t, tc.wantInUse, s.inUse.Load())
 		})
 	}
 }
 
-func TestSentinelWrittenOnce(t *testing.T) {
-	s, e := newTestStore(t, true, errNotExists)
-	e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil).Times(2)
-	e.closed.EXPECT().InsertClosedExecution(gomock.Any(), sentinelKey, gomock.Any()).Return(nil).Times(1)
-	e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil).Times(2)
-	e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil).Times(2)
-	require.NoError(t, s.MoveToClosedExecutions(context.Background(), e.deleteRequest()))
-	require.NoError(t, s.MoveToClosedExecutions(context.Background(), e.deleteRequest()))
+// TestModeMatrix pins, for every mode and operation, exactly which closed-store calls happen. The gomock closed
+// store is strict, so in off any call at all fails the test: that is the proof of zero reads.
+func TestModeMatrix(t *testing.T) {
+	notThere := &types.EntityNotExistsError{Message: "update on a missing row"}
+	hotResp := func(e *testEnv) *persistence.InternalGetWorkflowExecutionResponse {
+		return &persistence.InternalGetWorkflowExecutionResponse{State: e.full}
+	}
+	// differs is a slim row that disagrees with the hot row on one field
+	differs := func(t *testing.T, e *testEnv) *persistence.DataBlob {
+		other := *e.full
+		info := *other.ExecutionInfo
+		info.TaskList = "other-tl"
+		other.ExecutionInfo = &info
+		blob, err := toBlob(testParser(t), &other)
+		require.NoError(t, err)
+		return blob
+	}
+	type op struct {
+		// expect sets the calls the wrapped and closed stores must see in the given mode
+		expect func(t *testing.T, e *testEnv, mode string)
+		// run calls the decorator and checks the result
+		run func(t *testing.T, s *store, e *testEnv, mode string)
+		// mismatches is the shadow mismatch counter expected, by mode
+		mismatches int64
+	}
+	getHit := func(t *testing.T, s *store, e *testEnv, mode string) {
+		resp, err := s.GetWorkflowExecution(context.Background(), e.getRequest())
+		require.NoError(t, err)
+		assert.Same(t, e.full, resp.State, "the hot row is returned as is")
+	}
+	// readsSlimOnHit is where the shadow compare reads the slim row of a hot closed run
+	readsSlimOnHit := func(mode string) bool { return mode == "shadow" }
+
+	ops := map[string]op{
+		"get hit, no slim row": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(hotResp(e), nil)
+				if readsSlimOnHit(mode) {
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(nil, errNotExists)
+				}
+			},
+			run: getHit,
+		},
+		"get hit, slim row matches": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(hotResp(e), nil)
+				if readsSlimOnHit(mode) {
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil)
+				}
+			},
+			run: getHit,
+		},
+		"get hit, slim row differs": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(hotResp(e), nil)
+				if readsSlimOnHit(mode) {
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(differs(t, e), nil)
+				}
+			},
+			run:        getHit,
+			mismatches: 1,
+		},
+		"get miss, slim row": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
+				if mode != "off" {
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil)
+				}
+			},
+			run: func(t *testing.T, s *store, e *testEnv, mode string) {
+				resp, err := s.GetWorkflowExecution(context.Background(), e.getRequest())
+				if mode == "off" {
+					assert.Equal(t, errNotExists, err)
+					return
+				}
+				require.NoError(t, err)
+				assert.Equal(t, expectedSlimState(t, e.full), resp.State)
+			},
+		},
+		"get miss, no slim row": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
+				if mode != "off" {
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(nil, errNotExists)
+				}
+			},
+			run: func(t *testing.T, s *store, e *testEnv, mode string) {
+				_, err := s.GetWorkflowExecution(context.Background(), e.getRequest())
+				assert.Equal(t, errNotExists, err)
+			},
+		},
+		"is exists, only in the slim table": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().IsWorkflowExecutionExists(gomock.Any(), gomock.Any()).Return(&persistence.IsWorkflowExecutionExistsResponse{}, nil)
+				if mode != "off" {
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(&persistence.DataBlob{}, nil)
+				}
+			},
+			run: func(t *testing.T, s *store, e *testEnv, mode string) {
+				resp, err := s.IsWorkflowExecutionExists(context.Background(), &persistence.IsWorkflowExecutionExistsRequest{
+					DomainID: e.key.DomainID, WorkflowID: e.key.WorkflowID, RunID: e.key.RunID,
+				})
+				require.NoError(t, err)
+				assert.Equal(t, mode != "off", resp.Exists)
+			},
+		},
+		"delete": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil)
+				if mode != "off" {
+					e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(nil)
+				}
+			},
+			run: func(t *testing.T, s *store, e *testEnv, mode string) {
+				assert.NoError(t, s.DeleteWorkflowExecution(context.Background(), e.deleteRequest()))
+			},
+		},
+		"update that needs a put-back": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				req := putBackRequest(e)
+				if mode == "off" {
+					e.inner.EXPECT().UpdateWorkflowExecution(gomock.Any(), req).Return(notThere)
+					return
+				}
+				gomock.InOrder(
+					e.inner.EXPECT().UpdateWorkflowExecution(gomock.Any(), req).Return(notThere),
+					e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil),
+					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil, errNotExists),
+					e.inner.EXPECT().CreateWorkflowExecution(gomock.Any(), gomock.Any()).Return(&persistence.CreateWorkflowExecutionResponse{}, nil),
+					e.inner.EXPECT().UpdateWorkflowExecution(gomock.Any(), req).Return(nil),
+				)
+			},
+			run: func(t *testing.T, s *store, e *testEnv, mode string) {
+				err := s.UpdateWorkflowExecution(context.Background(), putBackRequest(e))
+				if mode == "off" {
+					assert.Equal(t, notThere, err)
+					return
+				}
+				assert.NoError(t, err)
+			},
+		},
+		"move": {
+			expect: func(t *testing.T, e *testEnv, mode string) {
+				switch mode {
+				case "shadow":
+					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(hotResp(e), nil)
+					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, e.slimBlob(t)).Return(nil)
+				case "on":
+					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(hotResp(e), nil)
+					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, e.slimBlob(t)).Return(nil)
+					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(nil)
+				}
+			},
+			run: func(t *testing.T, s *store, e *testEnv, mode string) {
+				assert.NoError(t, s.MoveToClosedExecutions(context.Background(), e.deleteRequest()))
+				wantMoves := int64(0)
+				if mode == "on" {
+					wantMoves = 1
+				}
+				assert.Equal(t, wantMoves, e.counter("warm_storage_moves"))
+			},
+		},
+	}
+	for opName, o := range ops {
+		for _, mode := range []string{"off", "shadow", "read_only", "on"} {
+			t.Run(mode+"/"+opName, func(t *testing.T) {
+				s, e := newTestStore(t, mode)
+				o.expect(t, e, mode)
+				o.run(t, s, e, mode)
+				want := int64(0)
+				if mode == "shadow" {
+					want = o.mismatches
+				}
+				assert.Equal(t, want, e.counter("warm_storage_shadow_mismatches"))
+			})
+		}
+	}
 }
 
-// TestFlagOffIssuesSameCallsAsWithoutDecorator is the opt-in proof at the store boundary: in a cluster that
-// never enabled warm storage, every overridden call reaches the wrapped store exactly once with the same
-// request and the closed store sees nothing but a sentinel read after the missed read and the delete (strict
-// mocks fail on any other call).
-func TestFlagOffIssuesSameCallsAsWithoutDecorator(t *testing.T) {
-	s, e := newTestStore(t, false, nil)
-	s.inUse.Store(false) // never enabled
-	s.sentinelWritten.Store(false)
-	ctx := context.Background()
-	getReq := e.getRequest()
-	existsReq := &persistence.IsWorkflowExecutionExistsRequest{DomainID: e.key.DomainID, WorkflowID: e.key.WorkflowID, RunID: e.key.RunID}
-	deleteReq := e.deleteRequest()
-	updateReq := &persistence.InternalUpdateWorkflowExecutionRequest{RangeID: 1}
+func putBackRequest(e *testEnv) *persistence.InternalUpdateWorkflowExecutionRequest {
+	return &persistence.InternalUpdateWorkflowExecutionRequest{
+		ShardID: common.IntPtr(7),
+		RangeID: 9,
+		UpdateWorkflowMutation: persistence.InternalWorkflowMutation{ExecutionInfo: &persistence.InternalWorkflowExecutionInfo{
+			DomainID: e.key.DomainID, WorkflowID: e.key.WorkflowID, RunID: e.key.RunID,
+		}},
+	}
+}
 
-	gomock.InOrder(
-		e.inner.EXPECT().GetWorkflowExecution(ctx, getReq).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
-		e.inner.EXPECT().GetWorkflowExecution(ctx, getReq).Return(nil, errNotExists),
-		e.inner.EXPECT().IsWorkflowExecutionExists(ctx, existsReq).Return(&persistence.IsWorkflowExecutionExistsResponse{}, nil),
-		e.inner.EXPECT().UpdateWorkflowExecution(ctx, updateReq).Return(nil),
-		e.inner.EXPECT().DeleteWorkflowExecution(ctx, deleteReq).Return(nil),
-	)
-	// the only closed-store calls: the sentinel read after each miss (get, exists) and before the delete
-	e.closed.EXPECT().GetClosedExecution(ctx, sentinelKey).Return(nil, errNotExists).Times(3)
+// Shadow follows the move's skip rules and fails open like on, and never deletes the executions row.
+func TestShadowMove(t *testing.T) {
+	tests := map[string]struct {
+		setup        func(t *testing.T, e *testEnv)
+		wantFailures int64
+		wantSkipped  int64
+	}{
+		"open run is skipped": {
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ExecutionInfo.State = persistence.WorkflowStateRunning
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+		},
+		"activity in flight is skipped and counted": {
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ActivityInfos = map[int64]*persistence.InternalActivityInfo{5: {ScheduleID: 5}}
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantSkipped: 1,
+		},
+		"child in flight is skipped and counted": {
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ChildExecutionInfos = map[int64]*persistence.InternalChildExecutionInfo{7: {InitiatedID: 7}}
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantSkipped: 1,
+		},
+		"slim write fails: fails open": {
+			setup: func(t *testing.T, e *testEnv) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(errDB)
+			},
+			wantFailures: 1,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s, e := newTestStore(t, "shadow")
+			tc.setup(t, e)
+			assert.NoError(t, s.MoveToClosedExecutions(context.Background(), e.deleteRequest()))
+			assert.Equal(t, tc.wantFailures, e.counter("warm_storage_move_failures"))
+			assert.Equal(t, tc.wantSkipped, e.counter("warm_storage_moves_skipped"))
+			assert.Zero(t, e.counter("warm_storage_moves"))
+		})
+	}
+}
 
-	resp, err := s.GetWorkflowExecution(ctx, getReq)
-	require.NoError(t, err)
-	assert.Same(t, e.full, resp.State)
-	_, err = s.GetWorkflowExecution(ctx, getReq)
-	assert.Same(t, errNotExists, err)
-	exists, err := s.IsWorkflowExecutionExists(ctx, existsReq)
-	require.NoError(t, err)
-	assert.False(t, exists.Exists)
-	require.NoError(t, s.UpdateWorkflowExecution(ctx, updateReq))
-	require.NoError(t, s.DeleteWorkflowExecution(ctx, deleteReq))
-	assert.False(t, s.inUse.Load())
+// A shadow compare that can't read or decode the slim row logs and still returns the hot row.
+func TestShadowCompareErrorsOnlyLog(t *testing.T) {
+	for name, closedResp := range map[string]struct {
+		blob *persistence.DataBlob
+		err  error
+	}{
+		"read error":   {nil, errDB},
+		"decode error": {persistence.NewDataBlob([]byte("garbage"), constants.EncodingTypeThriftRW), nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, e := newTestStore(t, "shadow")
+			e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(closedResp.blob, closedResp.err)
+			resp, err := s.GetWorkflowExecution(context.Background(), e.getRequest())
+			require.NoError(t, err)
+			assert.Same(t, e.full, resp.State)
+			assert.Zero(t, e.counter("warm_storage_shadow_mismatches"))
+		})
+	}
 }

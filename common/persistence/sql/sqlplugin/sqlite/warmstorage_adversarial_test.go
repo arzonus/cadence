@@ -26,19 +26,19 @@ import (
 
 type warmEnv struct {
 	base     *pt.TestBase
-	flag     *atomic.Bool
+	mode     *atomic.Value
 	domainID string
 	we       types.WorkflowExecution
 }
 
 func newWarmEnv(t *testing.T) *warmEnv {
-	flag := &atomic.Bool{}
-	flag.Store(true)
+	mode := &atomic.Value{}
+	mode.Store("on")
 	dc := persistence.NewDefaultDynamicConfiguration()
-	dc.EnableWarmStorage = func(string) bool { return flag.Load() }
+	dc.WarmStorageMode = func(string) string { return mode.Load().(string) }
 	base := pt.NewTestBase(t, pt.TestBaseParams{PersistenceConfig: pt.SimplePersistenceConfig(t, GetTestConfig), DynamicConfiguration: dc})
 	base.Setup()
-	return &warmEnv{base: base, flag: flag, domainID: uuid.New(), we: types.WorkflowExecution{WorkflowID: "wf-" + uuid.New(), RunID: uuid.New()}}
+	return &warmEnv{base: base, mode: mode, domainID: uuid.New(), we: types.WorkflowExecution{WorkflowID: "wf-" + uuid.New(), RunID: uuid.New()}}
 }
 
 func (e *warmEnv) create(t *testing.T) {
@@ -192,20 +192,37 @@ func (e *warmEnv) freshManager(t *testing.T) persistence.ExecutionManager {
 	return persistence.NewExecutionManagerImpl(store, testlogger.New(t), persistence.NewPayloadSerializer(), &e.base.DynamicConfiguration)
 }
 
-// TestAdversarial_FlagOffAfterMoveKeepsReadsAndDeletes: on -> move -> off -> restarted process still reads and deletes.
-func TestAdversarial_FlagOffAfterMoveKeepsReadsAndDeletes(t *testing.T) {
+// TestAdversarial_ReadOnlyAfterMoveKeepsReadsAndDeletes: on -> move -> read_only -> restarted process still reads and deletes.
+func TestAdversarial_ReadOnlyAfterMoveKeepsReadsAndDeletes(t *testing.T) {
 	e := newWarmEnv(t)
 	ctx := context.Background()
 	e.create(t)
 	e.closeRun(t)
 	require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
-	e.flag.Store(false)
-	mgr := e.freshManager(t) // restarted process, flag off
+	e.mode.Store("read_only")
+	mgr := e.freshManager(t) // restarted process
 	_, err := mgr.GetWorkflowExecution(ctx, e.getReq())
 	require.NoError(t, err)
 	require.NoError(t, mgr.DeleteWorkflowExecution(ctx, e.req()))
 	_, err = mgr.GetWorkflowExecution(ctx, e.getReq())
 	assert.IsType(t, &types.EntityNotExistsError{}, err)
+}
+
+// TestAdversarial_OffAfterMoveHidesMovedRuns: on -> move -> off makes the run invisible, and a delete leaves the
+// slim row behind. That is why the way back goes through read_only.
+func TestAdversarial_OffAfterMoveHidesMovedRuns(t *testing.T) {
+	e := newWarmEnv(t)
+	ctx := context.Background()
+	e.create(t)
+	e.closeRun(t)
+	require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
+	e.mode.Store("off")
+	mgr := e.freshManager(t)
+	_, err := mgr.GetWorkflowExecution(ctx, e.getReq())
+	assert.IsType(t, &types.EntityNotExistsError{}, err)
+	e.mode.Store("read_only")
+	_, err = e.freshManager(t).GetWorkflowExecution(ctx, e.getReq())
+	require.NoError(t, err, "the slim row is still there")
 }
 
 // onInsertClosed runs a hook right before the slim row is written, i.e. after the move has read the executions row.
@@ -215,9 +232,7 @@ type onInsertClosed struct {
 }
 
 func (c *onInsertClosed) InsertClosedExecution(ctx context.Context, key persistence.ClosedExecutionKey, data *persistence.DataBlob) error {
-	if key.WorkflowID != "cadence-warm-storage-sentinel" {
-		c.hook()
-	}
+	c.hook()
 	return c.ClosedExecutionStore.InsertClosedExecution(ctx, key, data)
 }
 

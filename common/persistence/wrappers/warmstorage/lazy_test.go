@@ -90,7 +90,7 @@ func TestUpdateWorkflowExecutionRestoresMovedRun(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s, e := newTestStore(t, true, nil)
+			s, e := newTestStore(t, "on")
 			req := &persistence.InternalUpdateWorkflowExecutionRequest{
 				ShardID: common.IntPtr(7),
 				RangeID: 9,

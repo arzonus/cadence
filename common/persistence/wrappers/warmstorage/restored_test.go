@@ -17,21 +17,22 @@ func TestHotReadOfRestoredRunIsMarked(t *testing.T) {
 	tests := map[string]struct {
 		state    int
 		points   *persistence.DataBlob
-		flagOn   bool
+		mode     string
 		slimRow  bool // whether the closed store has the row
 		readSlim bool // whether the decorator is expected to look
 		wantMark bool
 	}{
-		"closed, no points, slim row: marked":            {persistence.WorkflowStateCompleted, nil, true, true, true, true},
-		"closed, no points, no slim row: not marked":     {persistence.WorkflowStateCompleted, nil, true, false, true, false},
-		"closed, empty points stored by a write: marked": {persistence.WorkflowStateCompleted, emptyPoints(t), true, true, true, true},
-		"closed with points: slim row not read":          {persistence.WorkflowStateCompleted, withPoints(t), true, true, false, false},
-		"open run: slim row not read":                    {persistence.WorkflowStateRunning, nil, true, true, false, false},
-		"flag off, never enabled: slim row not read":     {persistence.WorkflowStateCompleted, nil, false, true, false, false},
+		"closed, no points, slim row: marked":            {persistence.WorkflowStateCompleted, nil, "on", true, true, true},
+		"closed, no points, no slim row: not marked":     {persistence.WorkflowStateCompleted, nil, "on", false, true, false},
+		"closed, empty points stored by a write: marked": {persistence.WorkflowStateCompleted, emptyPoints(t), "on", true, true, true},
+		"closed with points: slim row not read":          {persistence.WorkflowStateCompleted, withPoints(t), "on", true, false, false},
+		"open run: slim row not read":                    {persistence.WorkflowStateRunning, nil, "on", true, false, false},
+		"read_only: closed, no points, slim row: marked": {persistence.WorkflowStateCompleted, nil, "read_only", true, true, true},
+		"off: slim row not read":                         {persistence.WorkflowStateCompleted, nil, "off", true, false, false},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s, e := newTestStore(t, tc.flagOn, errNotExists)
+			s, e := newTestStore(t, tc.mode)
 			state := *e.full
 			info := *state.ExecutionInfo
 			info.State, info.AutoResetPoints = tc.state, tc.points
