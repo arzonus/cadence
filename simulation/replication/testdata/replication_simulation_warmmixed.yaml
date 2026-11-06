@@ -46,61 +46,61 @@ operations:
     cluster: cluster1
     failoverTimeoutSec: 5
   - op: validate
-    at: 80s
+    at: 110s
     workflowID: mx-a
     cluster: cluster0
     domain: test-domain
     want:
       status: completed
   - op: validate
-    at: 80s
+    at: 110s
     workflowID: mx-a
     cluster: cluster1
     domain: test-domain
     want:
       status: completed
   - op: validate
-    at: 80s
+    at: 110s
     workflowID: mx-b
     cluster: cluster0
     domain: test-domain
     want:
       status: completed
   - op: validate
-    at: 80s
+    at: 110s
     workflowID: mx-b
     cluster: cluster1
     domain: test-domain
     want:
       status: completed
   - op: validate
-    at: 80s
+    at: 110s
     workflowID: mx-fail
     cluster: cluster0
     domain: test-domain
     want:
       status: failed
   - op: validate
-    at: 80s
+    at: 110s
     workflowID: mx-fail
     cluster: cluster1
     domain: test-domain
     want:
       status: failed
   - op: change_active_clusters
-    at: 85s
+    at: 115s
     domain: test-domain
     newActiveCluster: cluster0
     cluster: cluster0
     failoverTimeoutSec: 5
   - op: reset_workflow
-    at: 100s
+    at: 130s
     workflowID: mx-a
     cluster: cluster0
     domain: test-domain
     eventID: 4
   - op: start_workflow
-    at: 100s
+    at: 130s
     workflowType: activity-loop-workflow
     workflowID: mx-c
     cluster: cluster0
@@ -108,49 +108,49 @@ operations:
     workflowExecutionStartToCloseTimeout: 400s
     activityCount: 2
   - op: compare_clusters
-    at: 140s
+    at: 215s
     workflowID: mx-a
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 140s
+    at: 215s
     workflowID: mx-b
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 140s
+    at: 215s
     workflowID: mx-fail
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: validate
-    at: 140s
+    at: 215s
     workflowID: mx-c
     cluster: cluster0
     domain: test-domain
     want:
       status: completed
   - op: validate
-    at: 140s
+    at: 215s
     workflowID: mx-c
     cluster: cluster1
     domain: test-domain
     want:
       status: completed
   - op: compare_clusters
-    at: 140s
+    at: 215s
     workflowID: mx-c
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: validate_dlq_empty
-    at: 160s
+    at: 240s
     cluster: cluster0
   - op: validate_dlq_empty
-    at: 160s
+    at: 240s
     cluster: cluster1
   - op: marker
-    at: 165s
+    at: 245s
     marker: rows-final

@@ -50,3 +50,6 @@ history.timerProcessorUpdateAckInterval:       # 30s default
 system.minRetentionDays:
   - value: 0
     constraints: {}
+system.workflowDeletionJitterRange:
+  - value: 1
+    constraints: {}

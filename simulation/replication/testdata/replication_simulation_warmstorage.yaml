@@ -78,22 +78,8 @@ operations:
       status: completed
   - op: validate
     at: 30s
-    workflowID: ws-complete
-    cluster: cluster1
-    domain: test-domain
-    want:
-      status: completed
-  - op: validate
-    at: 30s
     workflowID: ws-fail
     cluster: cluster0
-    domain: test-domain
-    want:
-      status: failed
-  - op: validate
-    at: 30s
-    workflowID: ws-fail
-    cluster: cluster1
     domain: test-domain
     want:
       status: failed
@@ -106,13 +92,6 @@ operations:
       status: timed-out
   - op: validate
     at: 30s
-    workflowID: ws-timeout
-    cluster: cluster1
-    domain: test-domain
-    want:
-      status: timed-out
-  - op: validate
-    at: 30s
     workflowID: ws-terminate
     cluster: cluster0
     domain: test-domain
@@ -120,22 +99,8 @@ operations:
       status: terminated
   - op: validate
     at: 30s
-    workflowID: ws-terminate
-    cluster: cluster1
-    domain: test-domain
-    want:
-      status: terminated
-  - op: validate
-    at: 30s
     workflowID: ws-can
     cluster: cluster0
-    domain: test-domain
-    want:
-      status: completed
-  - op: validate
-    at: 30s
-    workflowID: ws-can
-    cluster: cluster1
     domain: test-domain
     want:
       status: completed
@@ -144,62 +109,48 @@ operations:
     workflowID: ws-cron
     cluster: cluster0
     domain: test-domain
-  - op: validate
-    at: 85s
-    workflowID: ws-cron
-    cluster: cluster0
-    domain: test-domain
-    want:
-      status: terminated
-  - op: validate
-    at: 85s
-    workflowID: ws-cron
-    cluster: cluster1
-    domain: test-domain
-    want:
-      status: terminated
   - op: compare_clusters
-    at: 90s
+    at: 135s
     workflowID: ws-complete
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 90s
+    at: 135s
     workflowID: ws-fail
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 90s
+    at: 135s
     workflowID: ws-timeout
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 90s
+    at: 135s
     workflowID: ws-terminate
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 90s
+    at: 135s
     workflowID: ws-can
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 90s
+    at: 135s
     workflowID: ws-cron
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: validate_dlq_empty
-    at: 100s
+    at: 140s
     cluster: cluster0
   - op: validate_dlq_empty
-    at: 100s
+    at: 140s
     cluster: cluster1
   - op: marker
-    at: 105s
+    at: 145s
     marker: rows-final

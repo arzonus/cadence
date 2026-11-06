@@ -13,3 +13,6 @@ history.ReplicationTaskProcessorStartWait: # default is 5s. repl task processor 
 system.enableWarmStorage:
   - value: true
     constraints: {}
+history.standbyClusterDelay:
+  - value: 5s
+    constraints: {}
