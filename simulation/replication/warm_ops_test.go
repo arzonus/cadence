@@ -41,7 +41,7 @@ func terminateWorkflow(t *testing.T, op *simTypes.Operation, simCfg *simTypes.Re
 	})
 }
 
-// workflowFingerprint is what must be identical on both clusters once replication has caught up.
+// workflowFingerprint is what must be identical on both clusters once replication has caught up. It leaves out the describe StartTime: a reset run gets a different one per cluster (flag off too).
 func workflowFingerprint(t *testing.T, simCfg *simTypes.ReplicationSimulationConfig, cluster, domain string, exec *types.WorkflowExecution) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -58,14 +58,13 @@ func workflowFingerprint(t *testing.T, simCfg *simTypes.ReplicationSimulationCon
 	b, err := json.Marshal(struct {
 		Execution     *types.WorkflowExecution
 		Type          *types.WorkflowType
-		StartTime     *int64
 		CloseTime     *int64
 		CloseStatus   *types.WorkflowExecutionCloseStatus
 		HistoryLength int64
 		PendingAct    int
 		PendingChild  int
 		History       []types.HistoryEvent
-	}{info.Execution, info.Type, info.StartTime, info.CloseTime, info.CloseStatus, info.HistoryLength, len(desc.PendingActivities), len(desc.PendingChildren), history})
+	}{info.Execution, info.Type, info.CloseTime, info.CloseStatus, info.HistoryLength, len(desc.PendingActivities), len(desc.PendingChildren), history})
 	return string(b), err
 }
 

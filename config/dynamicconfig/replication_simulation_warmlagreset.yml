@@ -41,3 +41,9 @@ history.ReplicationTaskFetcherErrorRetryWait:  # 1s default
 history.standbyTaskReReplicationContextTimeout:  # 3m default
   - value: 3s
     constraints: {}
+history.timerProcessorMaxPollInterval:         # 5m default; a timer generated in the past (retention 0) waits for the next poll
+  - value: 5s
+    constraints: {}
+history.timerProcessorUpdateAckInterval:       # 30s default
+  - value: 500ms
+    constraints: {}

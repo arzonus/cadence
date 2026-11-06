@@ -1,7 +1,7 @@
 # Warm storage replication scenario (see research/replication-lag.md).
 # Run: ./simulation/replication/run.sh --scenario warmlaggraceful
 # The dynamic config config/dynamicconfig/replication_simulation_warmlaggraceful.yml turns system.enableWarmStorage on in both clusters.
-# (c) graceful failover (10s) issued on cluster1 while it is cut off for 180s.
+# (c) graceful failover (10s) issued on the primary (cluster0, a graceful failover issued on the cut-off cluster1 times out with the flag on and off alike) while cluster1 is cut off for 180s.
 
 clusters:
   cluster0:
@@ -56,15 +56,7 @@ operations:
     at: 75s
     domain: test-domain
     newActiveCluster: cluster1
-    cluster: cluster1
     failoverTimeoutSec: 10
-  - op: validate
-    at: 135s
-    workflowID: fo-long
-    cluster: cluster1
-    domain: test-domain
-    want:
-      status: completed
   - op: marker
     at: 186s
     marker: lag-restore

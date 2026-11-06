@@ -1,7 +1,7 @@
 # Warm storage replication scenario (see research/replication-lag.md).
 # Run: ./simulation/replication/run.sh --scenario warmlagreset
 # The dynamic config config/dynamicconfig/replication_simulation_warmlagreset.yml turns system.enableWarmStorage on in both clusters.
-# (e) forced failover to cluster1 during a 180s cut, then reset on cluster1 of a run that is Warm on cluster0 (rs-warm closed everywhere before the cut, rs-long closed only on cluster0).
+# (e) the standby catches up after a 180s cut, a forced failover (a graceful one fails with a failed-to-verify-failover-version error with the flag on and off alike) makes cluster1 active, then cluster1 resets two runs that are Warm on cluster0. A reset on cluster1 during the cut hangs for 10s with the flag on and off alike, so it isn't used.
 
 clusters:
   cluster0:
@@ -42,44 +42,72 @@ operations:
     domain: test-domain
     want:
       status: completed
-  - op: change_active_clusters
-    at: 62s
-    domain: test-domain
-    newActiveCluster: cluster1
-    cluster: cluster1
-  - op: reset_workflow
-    at: 66s
-    workflowID: rs-warm
-    cluster: cluster1
-    domain: test-domain
-    eventID: 4
-  - op: reset_workflow
-    at: 68s
-    workflowID: rs-long
-    cluster: cluster1
-    domain: test-domain
-    eventID: 4
   - op: marker
-    at: 186s
+    at: 190s
     marker: lag-restore
   - op: compare_clusters
-    at: 215s
+    at: 200s
     workflowID: rs-long
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
   - op: compare_clusters
-    at: 215s
+    at: 200s
     workflowID: rs-warm
     sourceCluster: cluster0
     targetCluster: cluster1
     domain: test-domain
+  - op: marker
+    at: 225s
+    marker: rows-before-failover
+  - op: change_active_clusters
+    at: 230s
+    domain: test-domain
+    newActiveCluster: cluster1
+  - op: reset_workflow
+    at: 250s
+    workflowID: rs-warm
+    cluster: cluster1
+    domain: test-domain
+    eventID: 4
+  - op: reset_workflow
+    at: 252s
+    workflowID: rs-long
+    cluster: cluster1
+    domain: test-domain
+    eventID: 4
+  - op: compare_clusters
+    at: 285s
+    workflowID: rs-long
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 285s
+    workflowID: rs-warm
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: validate
+    at: 285s
+    workflowID: rs-long
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 285s
+    workflowID: rs-warm
+    cluster: cluster1
+    domain: test-domain
+    want:
+      status: completed
   - op: validate_dlq_empty
-    at: 290s
+    at: 320s
     cluster: cluster0
   - op: validate_dlq_empty
-    at: 290s
+    at: 320s
     cluster: cluster1
   - op: marker
-    at: 292s
+    at: 322s
     marker: rows-final

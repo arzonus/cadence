@@ -43,6 +43,7 @@ operations:
     at: 25s
     domain: test-domain
     newActiveCluster: cluster1
+    cluster: cluster1
     failoverTimeoutSec: 5
   - op: validate
     at: 80s
@@ -90,6 +91,7 @@ operations:
     at: 85s
     domain: test-domain
     newActiveCluster: cluster0
+    cluster: cluster0
     failoverTimeoutSec: 5
   - op: reset_workflow
     at: 100s
