@@ -32,7 +32,8 @@ type testEnv struct {
 	full   *persistence.InternalWorkflowMutableState
 }
 
-// newTestStore builds the decorator. sentinel is what the startup probe returns.
+// newTestStore builds the decorator. sentinel is what reading the sentinel returns whenever the store needs it:
+// nil means the cluster has Warm rows and this host already knows.
 func newTestStore(t *testing.T, flagOn bool, sentinel error) (*store, *testEnv) {
 	ctrl := gomock.NewController(t)
 	env := &testEnv{
@@ -42,11 +43,16 @@ func newTestStore(t *testing.T, flagOn bool, sentinel error) (*store, *testEnv) 
 		key:    testKey(),
 	}
 	env.full = closedState(t, env.key)
-	env.closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(nil, sentinel)
 	dc := persistence.NewDefaultDynamicConfiguration()
 	dc.EnableWarmStorage = dynamicproperties.GetBoolPropertyFnFilteredByDomainID(flagOn)
 	s := NewExecutionStore(env.inner, env.closed, testParser(t), dc, testlogger.New(t),
 		metrics.NewClient(env.scope, metrics.History, metrics.MigrationConfig{})).(*store)
+	if sentinel == nil {
+		s.inUse.Store(true)
+		s.sentinelWritten.Store(true)
+	} else {
+		env.closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(nil, sentinel).AnyTimes()
+	}
 	return s, env
 }
 
@@ -78,7 +84,8 @@ func (e *testEnv) counter(name string) int64 {
 	return total
 }
 
-func TestNewExecutionStoreProbesSentinel(t *testing.T) {
+// A host learns about Warm rows lazily, from the sentinel, and only when it needs the fallback.
+func TestSentinelIsReadOnDemand(t *testing.T) {
 	tests := map[string]struct {
 		sentinel  error
 		wantInUse bool
@@ -89,10 +96,25 @@ func TestNewExecutionStoreProbesSentinel(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			s, _ := newTestStore(t, false, tc.sentinel)
-			assert.Equal(t, tc.wantInUse, s.inUse.Load())
+			s := newUnprobedStore(t, tc.sentinel, 1)
+			assert.False(t, s.inUse.Load(), "nothing is read at construction")
+			assert.Equal(t, tc.wantInUse, s.fallbackOn(context.Background(), testKey().DomainID))
 		})
 	}
+}
+
+// newUnprobedStore is a flag-off store whose closed store answers exactly reads sentinel reads with sentinel.
+func newUnprobedStore(t *testing.T, sentinel error, reads int) *store {
+	ctrl := gomock.NewController(t)
+	closed := persistence.NewMockClosedExecutionStore(ctrl)
+	var blob *persistence.DataBlob
+	if sentinel == nil {
+		blob = &persistence.DataBlob{}
+	}
+	closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(blob, sentinel).Times(reads)
+	dc := persistence.NewDefaultDynamicConfiguration()
+	dc.EnableWarmStorage = dynamicproperties.GetBoolPropertyFnFilteredByDomainID(false)
+	return NewExecutionStore(persistence.NewMockExecutionStore(ctrl), closed, testParser(t), dc, testlogger.New(t), nil).(*store)
 }
 
 func TestGetWorkflowExecution(t *testing.T) {
@@ -437,9 +459,12 @@ func TestSentinelWrittenOnce(t *testing.T) {
 
 // TestFlagOffIssuesSameCallsAsWithoutDecorator is the opt-in proof at the store boundary: in a cluster that
 // never enabled warm storage, every overridden call reaches the wrapped store exactly once with the same
-// request and the closed store sees nothing but the startup probe (strict mocks fail on any other call).
+// request and the closed store sees nothing but a sentinel read after the missed read and the delete (strict
+// mocks fail on any other call).
 func TestFlagOffIssuesSameCallsAsWithoutDecorator(t *testing.T) {
-	s, e := newTestStore(t, false, errNotExists)
+	s, e := newTestStore(t, false, nil)
+	s.inUse.Store(false) // never enabled
+	s.sentinelWritten.Store(false)
 	ctx := context.Background()
 	getReq := e.getRequest()
 	existsReq := &persistence.IsWorkflowExecutionExistsRequest{DomainID: e.key.DomainID, WorkflowID: e.key.WorkflowID, RunID: e.key.RunID}
@@ -453,6 +478,8 @@ func TestFlagOffIssuesSameCallsAsWithoutDecorator(t *testing.T) {
 		e.inner.EXPECT().UpdateWorkflowExecution(ctx, updateReq).Return(nil),
 		e.inner.EXPECT().DeleteWorkflowExecution(ctx, deleteReq).Return(nil),
 	)
+	// the only closed-store calls: the sentinel read after each miss (get, exists) and before the delete
+	e.closed.EXPECT().GetClosedExecution(ctx, sentinelKey).Return(nil, errNotExists).Times(3)
 
 	resp, err := s.GetWorkflowExecution(ctx, getReq)
 	require.NoError(t, err)

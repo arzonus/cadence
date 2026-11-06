@@ -13,34 +13,40 @@ import (
 	"github.com/uber/cadence/common/persistence"
 )
 
-// With the flag off, a host that missed the sentinel at startup (the probe failed, or no run had been moved
-// yet) must still find Warm rows: a missed read re-probes the sentinel once the throttle interval has passed.
-func TestMissedReadReprobesSentinel(t *testing.T) {
-	for name, startupProbe := range map[string]error{
-		"startup probe failed":               errDB,
-		"host started before the first move": errNotExists,
-	} {
-		t.Run(name, func(t *testing.T) {
-			s, e := newTestStore(t, false, startupProbe)
-			ctx := context.Background()
+// With the flag off, a host that hasn't heard of the first move must find Warm rows on a missed read, and a
+// delete must remove the closed row too: the sentinel is read on every miss until it is found. A failing read
+// (no table) is not repeated within the retry interval.
+func TestMissedReadFindsSentinel(t *testing.T) {
+	s, e := newTestStore(t, false, nil)
+	s.inUse.Store(false)
+	s.sentinelWritten.Store(false)
+	ctx := context.Background()
+	gomock.InOrder(
+		// not found: the miss is returned as is, and the next one reads the sentinel again
+		e.closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(nil, errNotExists),
+		e.closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(&persistence.DataBlob{}, nil),
+		e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil),
+		e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(nil),
+	)
+	e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists).Times(2)
+	e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil)
 
-			// within the interval: no extra query, the miss is returned as is
-			e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists)
-			_, err := s.GetWorkflowExecution(ctx, e.getRequest())
-			assert.Equal(t, errNotExists, err)
+	_, err := s.GetWorkflowExecution(ctx, e.getRequest())
+	assert.Equal(t, errNotExists, err)
+	resp, err := s.GetWorkflowExecution(ctx, e.getRequest())
+	require.NoError(t, err)
+	assert.Equal(t, expectedSlimState(t, e.full), resp.State)
+	require.NoError(t, s.DeleteWorkflowExecution(ctx, e.deleteRequest()))
+}
 
-			s.probedAt.Store(time.Now().Add(-sentinelReprobeInterval).UnixNano())
-			gomock.InOrder(
-				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(nil, errNotExists),
-				e.closed.EXPECT().GetClosedExecution(gomock.Any(), sentinelKey).Return(&persistence.DataBlob{}, nil),
-				e.closed.EXPECT().GetClosedExecution(gomock.Any(), e.key).Return(e.slimBlob(t), nil),
-			)
-			resp, err := s.GetWorkflowExecution(ctx, e.getRequest())
-			require.NoError(t, err)
-			assert.Equal(t, expectedSlimState(t, e.full), resp.State)
-			assert.True(t, s.inUse.Load())
-		})
-	}
+func TestFailedSentinelReadIsNotRepeatedWithinInterval(t *testing.T) {
+	s := newUnprobedStore(t, errDB, 2) // a third read fails the test
+	ctx := context.Background()
+	domainID := testKey().DomainID
+	assert.False(t, s.fallbackOn(ctx, domainID))
+	assert.False(t, s.fallbackOn(ctx, domainID), "within the interval")
+	s.probeFailedAt.Store(time.Now().Add(-sentinelRetryInterval).UnixNano())
+	assert.False(t, s.fallbackOn(ctx, domainID), "after the interval")
 }
 
 // Crash window: slim row written, delete fails; the retried close task must converge (upsert, delete).

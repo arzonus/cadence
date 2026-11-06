@@ -7,9 +7,10 @@
 //
 // Opt-in: system.enableWarmStorage (per domain ID, default off) gates the move. Reads keep falling back after
 // the flag is turned off, as long as this cluster has ever moved a run: a sentinel row records that, so Warm
-// rows stay readable until retention deletes them. A cluster that never enabled the flag issues no extra
-// queries besides a sentinel read at startup and at most one a minute after a missed read or a delete, and
-// doesn't need the closed_executions table at all.
+// rows stay readable until retention deletes them. A cluster that never enabled the flag does nothing at
+// startup and doesn't need the closed_executions table at all. Its only extra cost is one sentinel read per
+// missed read or delete (at most one a minute while the table can't be read), which is also how a host whose
+// flag lags learns that another host has moved runs.
 package warmstorage
 
 import (
@@ -36,12 +37,9 @@ var sentinelKey = persistence.ClosedExecutionKey{
 	RunID:      "00000000-0000-0000-0000-000000000000",
 }
 
-const (
-	sentinelProbeTimeout = 5 * time.Second
-	// how often a host re-reads the sentinel, so one that started before the cluster's first move, or whose
-	// startup probe failed, still learns that Warm rows exist
-	sentinelReprobeInterval = time.Minute
-)
+// sentinelRetryInterval is how long a host leaves the sentinel alone after a read of it failed, most likely
+// because the table doesn't exist.
+const sentinelRetryInterval = time.Minute
 
 type store struct {
 	persistence.ExecutionStore
@@ -55,7 +53,7 @@ type store struct {
 	// inUse turns the read fallback on for every domain; it never goes back to false in a process
 	inUse           atomic.Bool
 	sentinelWritten atomic.Bool
-	probedAt        atomic.Int64 // unix nanos of the last sentinel probe
+	probeFailedAt   atomic.Int64 // unix nanos of the last failed sentinel read, 0 if none
 }
 
 // NewExecutionStore wraps an execution store with warm storage.
@@ -70,7 +68,7 @@ func NewExecutionStore(
 	if metricsClient == nil {
 		metricsClient = metrics.NewNoopMetricsClient()
 	}
-	s := &store{
+	return &store{
 		ExecutionStore: execution,
 		closed:         closed,
 		parser:         parser,
@@ -79,10 +77,6 @@ func NewExecutionStore(
 		logger:         logger,
 		metrics:        metricsClient,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sentinelProbeTimeout)
-	defer cancel()
-	s.probeSentinel(ctx)
-	return s
 }
 
 func (s *store) GetWorkflowExecution(
@@ -194,19 +188,24 @@ func (s *store) fallbackOn(ctx context.Context, domainID string) bool {
 	return s.inUse.Load()
 }
 
-// probeSentinel runs at most once per sentinelReprobeInterval, so a cluster that never enabled warm storage
-// pays at most one closed_executions read per host per minute, and only after a missed read or a delete.
+// probeSentinel reads the sentinel on every call while it isn't known to exist, so a delete never skips the
+// closed row because another host has moved runs this one hasn't heard of. A failed read (most likely no table)
+// isn't repeated for sentinelRetryInterval.
 func (s *store) probeSentinel(ctx context.Context) {
-	last := s.probedAt.Load()
-	now := time.Now().UnixNano()
-	if last != 0 && now-last < int64(sentinelReprobeInterval) || !s.probedAt.CompareAndSwap(last, now) {
+	if failed := s.probeFailedAt.Load(); failed != 0 && time.Since(time.Unix(0, failed)) < sentinelRetryInterval {
 		return
 	}
-	if _, err := s.closed.GetClosedExecution(ctx, sentinelKey); err == nil {
+	_, err := s.closed.GetClosedExecution(ctx, sentinelKey)
+	switch {
+	case err == nil:
+		s.probeFailedAt.Store(0)
 		s.inUse.Store(true)
 		s.sentinelWritten.Store(true)
-	} else if !isNotExists(err) {
+	case isNotExists(err):
+		s.probeFailedAt.Store(0)
+	default:
 		// most likely the table isn't there: fine until someone turns the flag on
+		s.probeFailedAt.Store(time.Now().UnixNano())
 		s.logger.Info("warm storage is unavailable, closed_executions can't be read", tag.Error(err))
 	}
 }

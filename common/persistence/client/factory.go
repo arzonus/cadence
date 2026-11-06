@@ -372,15 +372,13 @@ func (f *factoryImpl) NewExecutionManager() (p.ExecutionManager, error) {
 	if err != nil {
 		return nil, err
 	}
-	if closed, err := ds.factory.NewClosedExecutionStore(); err != nil {
-		f.logger.Info("warm storage is not supported by this datastore", tag.Error(err))
-	} else {
-		parser, err := serialization.NewParser(f.dc)
-		if err != nil {
-			return nil, err
-		}
-		store = warmstorage.NewExecutionStore(store, closed, parser, f.dc, f.logger, f.metricsClient)
+	parser, err := serialization.NewParser(f.dc)
+	if err != nil {
+		return nil, err
 	}
+	// opened on first use, so a cluster that never enables warm storage doesn't connect for it
+	closed := warmstorage.NewLazyClosedStore(ds.factory.NewClosedExecutionStore)
+	store = warmstorage.NewExecutionStore(store, closed, parser, f.dc, f.logger, f.metricsClient)
 	result := p.NewExecutionManagerImpl(store, f.logger, p.NewPayloadSerializer(), f.dc)
 	if errorRate := f.dc.ErrorInjectionRate(); errorRate != 0 {
 		result = errorinjectors.NewExecutionManager(result, errorRate, f.logger, time.Now())
