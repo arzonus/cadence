@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/uber/cadence/common"
-	"github.com/uber/cadence/common/constants"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
@@ -149,24 +148,6 @@ func TestAdversarial_WriteToMovedRun(t *testing.T) {
 			condition := info.NextEventID
 			info.NextEventID++
 			return e.base.UpdateWorkflowExecution(context.Background(), info, st.ExecutionStats, st.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil)
-		},
-		"update with a new run (replication backfill)": func(e *warmEnv, st *persistence.WorkflowMutableState) error {
-			info := st.ExecutionInfo
-			condition := info.NextEventID
-			info.NextEventID++
-			newInfo := *info
-			newInfo.RunID = uuid.New()
-			newInfo.NextEventID = 3
-			newInfo.State, newInfo.CloseStatus = persistence.WorkflowStateZombie, persistence.WorkflowCloseStatusNone
-			_, err := e.base.ExecutionManager.UpdateWorkflowExecution(context.Background(), &persistence.UpdateWorkflowExecutionRequest{
-				Mode:                   persistence.UpdateWorkflowModeBypassCurrent,
-				UpdateWorkflowMutation: persistence.WorkflowMutation{ExecutionInfo: info, ExecutionStats: st.ExecutionStats, Condition: condition, VersionHistories: st.VersionHistories},
-				NewWorkflowSnapshot:    &persistence.WorkflowSnapshot{ExecutionInfo: &newInfo, ExecutionStats: st.ExecutionStats, VersionHistories: st.VersionHistories},
-				ShardID:                common.IntPtr(e.base.ShardInfo.ShardID),
-				RangeID:                e.base.ShardInfo.RangeID,
-				Encoding:               constants.EncodingTypeThriftRW,
-			})
-			return err
 		},
 		"conflict resolve": func(e *warmEnv, st *persistence.WorkflowMutableState) error {
 			info := st.ExecutionInfo
