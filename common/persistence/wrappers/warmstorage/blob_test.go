@@ -77,10 +77,10 @@ func closedState(t *testing.T, key persistence.ClosedExecutionKey) *persistence.
 			BranchToken:            []byte("branch"),
 		},
 		VersionHistories: testVersionHistories(t),
-		ActivityInfos:    map[int64]*persistence.InternalActivityInfo{1: {}},
-		TimerInfos:       map[string]*persistence.TimerInfo{"t": {}},
-		BufferedEvents:   []*persistence.DataBlob{{}},
-		ChecksumData:     persistence.NewDataBlob([]byte("checksum"), constants.EncodingTypeJSON),
+		// a leftover timer shows the slim row drops pending work; runs with activities or children never move
+		TimerInfos:     map[string]*persistence.TimerInfo{"t": {}},
+		BufferedEvents: []*persistence.DataBlob{{}},
+		ChecksumData:   persistence.NewDataBlob([]byte("checksum"), constants.EncodingTypeJSON),
 	}
 }
 

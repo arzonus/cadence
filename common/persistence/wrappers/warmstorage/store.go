@@ -275,6 +275,11 @@ func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence
 	if resp.State.ExecutionInfo.State != persistence.WorkflowStateCompleted {
 		return nil // e.g. standby hasn't applied the close yet; the run just stays hot
 	}
+	if len(resp.State.ActivityInfos) > 0 || len(resp.State.ChildExecutionInfos) > 0 {
+		// a run that timed out or was terminated with work in flight still lists it in Describe; the slim row can't
+		s.metrics.IncCounter(metrics.PersistenceMoveToClosedExecutionsScope, metrics.WarmStorageMovesSkipped)
+		return nil
+	}
 	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID}
 	blob, err := toBlob(s.parser, resp.State)
 	if err != nil {

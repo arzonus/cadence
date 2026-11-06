@@ -334,6 +334,7 @@ func TestMoveToClosedExecutions(t *testing.T) {
 		wantMoves     int64
 		wantFailures  int64
 		wantConflicts int64
+		wantSkipped   int64
 		wantInUse     bool
 	}{
 		"moves: sentinel, then slim row, then delete": {
@@ -380,6 +381,22 @@ func TestMoveToClosedExecutions(t *testing.T) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 			},
 			wantInUse: true,
+		},
+		"closed with an activity still in flight stays hot: Describe lists it": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ActivityInfos = map[int64]*persistence.InternalActivityInfo{5: {ScheduleID: 5}}
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantSkipped: 1, wantInUse: true,
+		},
+		"closed with a child still open stays hot: Describe lists it": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				e.full.ChildExecutionInfos = map[int64]*persistence.InternalChildExecutionInfo{7: {InitiatedID: 7}}
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+			},
+			wantSkipped: 1, wantInUse: true,
 		},
 		"slim row that wouldn't read back (branch without items) is never written": {
 			sentinel: nil,
@@ -482,6 +499,7 @@ func TestMoveToClosedExecutions(t *testing.T) {
 			assert.Equal(t, tc.wantMoves, e.counter("warm_storage_moves"))
 			assert.Equal(t, tc.wantFailures, e.counter("warm_storage_move_failures"))
 			assert.Equal(t, tc.wantConflicts, e.counter("warm_storage_move_conflicts"))
+			assert.Equal(t, tc.wantSkipped, e.counter("warm_storage_moves_skipped"))
 			assert.Equal(t, tc.wantInUse, s.inUse.Load())
 		})
 	}

@@ -37,6 +37,7 @@ there (the move fails open and every close logs an error).
 | `warm_storage_moves` | Runs moved | Flat at 0 while the flag is on |
 | `warm_storage_move_failures` | A move failed; the run stayed in `executions` (nothing is lost) | Sustained rate above 0: table missing, DB errors |
 | `warm_storage_move_conflicts` | A writer changed the run between the move's read and its delete; the run stayed hot | A steady rate: something keeps writing to freshly closed runs |
+| `warm_storage_moves_skipped` | A closed run still listed an activity or child in flight (it timed out or was terminated), so it stayed in `executions` and Describe keeps listing them | Informational; a high share of closes means fewer savings |
 | `warm_storage_rehydrates` | A write (replication backfill, conflict resolution, refresh, child-start dedupe) targeted a Warm run, and its `executions` row was put back | Informational; a steady high rate means closed runs keep being written and are not saving space |
 | `warm_storage_fallback_hits` | Reads served from `closed_executions` | Sudden drops or spikes against the move rate |
 
@@ -57,6 +58,8 @@ until retention has removed the Warm rows. Nothing needs migrating back.
 ## Known limits
 
 - Runs closed before the flag was turned on are not migrated.
+- Runs that close with an activity or child still in flight (timed out, terminated) are not moved, so Describe keeps
+  listing them exactly as before.
 - A write to a Warm run puts its `executions` row back (the slim row stays until retention). If the write leads to a
   new close (for example a replicated branch that closes at a higher version), the close task moves the run again.
   Otherwise (a lower-version backfill after a failover) it stays in `executions` until retention; reads prefer the hot

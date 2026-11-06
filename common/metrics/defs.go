@@ -2408,6 +2408,7 @@ const (
 	WarmStorageMoves
 	WarmStorageMoveFailures
 	WarmStorageMoveConflicts
+	WarmStorageMovesSkipped
 	WarmStorageRehydrates
 	WarmStorageFallbackHits
 	PersistenceRequests
@@ -3401,6 +3402,7 @@ var MetricDefs = map[ServiceIdx]map[MetricIdx]metricDefinition{
 		WarmStorageMoves:                                             {metricName: "warm_storage_moves", metricType: Counter},
 		WarmStorageMoveFailures:                                      {metricName: "warm_storage_move_failures", metricType: Counter},
 		WarmStorageMoveConflicts:                                     {metricName: "warm_storage_move_conflicts", metricType: Counter},
+		WarmStorageMovesSkipped:                                      {metricName: "warm_storage_moves_skipped", metricType: Counter},
 		WarmStorageRehydrates:                                        {metricName: "warm_storage_rehydrates", metricType: Counter},
 		WarmStorageFallbackHits:                                      {metricName: "warm_storage_fallback_hits", metricType: Counter},
 		PersistenceRequests:                                          {metricName: "persistence_requests", metricType: Counter},
