@@ -55,6 +55,11 @@ func workflowFingerprint(t *testing.T, simCfg *simTypes.ReplicationSimulationCon
 	if err != nil {
 		return "", fmt.Errorf("history on %s: %w", cluster, err)
 	}
+	pendingAct, pendingChild := len(desc.PendingActivities), len(desc.PendingChildren)
+	if info.CloseStatus != nil {
+		// A closed run served from a cached mutable state (hot) lists its pending activities, one served from closed_executions (warm) does not.
+		pendingAct, pendingChild = 0, 0
+	}
 	b, err := json.Marshal(struct {
 		Execution     *types.WorkflowExecution
 		Type          *types.WorkflowType
@@ -64,7 +69,7 @@ func workflowFingerprint(t *testing.T, simCfg *simTypes.ReplicationSimulationCon
 		PendingAct    int
 		PendingChild  int
 		History       []types.HistoryEvent
-	}{info.Execution, info.Type, info.CloseTime, info.CloseStatus, info.HistoryLength, len(desc.PendingActivities), len(desc.PendingChildren), history})
+	}{info.Execution, info.Type, info.CloseTime, info.CloseStatus, info.HistoryLength, pendingAct, pendingChild, history})
 	return string(b), err
 }
 
