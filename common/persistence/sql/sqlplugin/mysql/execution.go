@@ -63,9 +63,9 @@ shard_id, domain_id, workflow_id, run_id, create_request_id, state, close_status
 FROM current_executions WHERE shard_id = ? AND domain_id = ? AND workflow_id = ?`
 
 	lockCurrentExecutionJoinExecutionsQuery = `SELECT
-ce.shard_id, ce.domain_id, ce.workflow_id, ce.run_id, ce.create_request_id, ce.state, ce.close_status, ce.start_version, e.last_write_version
+ce.shard_id, ce.domain_id, ce.workflow_id, ce.run_id, ce.create_request_id, ce.state, ce.close_status, ce.start_version, COALESCE(e.last_write_version, ce.last_write_version) AS last_write_version
 FROM current_executions ce
-INNER JOIN executions e ON e.shard_id = ce.shard_id AND e.domain_id = ce.domain_id AND e.workflow_id = ce.workflow_id AND e.run_id = ce.run_id
+LEFT JOIN executions e ON e.shard_id = ce.shard_id AND e.domain_id = ce.domain_id AND e.workflow_id = ce.workflow_id AND e.run_id = ce.run_id
 WHERE ce.shard_id = ? AND ce.domain_id = ? AND ce.workflow_id = ? FOR UPDATE`
 
 	lockCurrentExecutionQuery = getCurrentExecutionQuery + ` FOR UPDATE`
