@@ -129,7 +129,7 @@ func TestAdversarial_MoveConcurrently(t *testing.T) {
 	errs := make([]error, 8)
 	for i := range errs {
 		wg.Add(1)
-		go func() { defer wg.Done(); errs[i] = e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()) }()
+		go func(i int) { defer wg.Done(); errs[i] = e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()) }(i)
 	}
 	wg.Wait()
 	for _, err := range errs {
