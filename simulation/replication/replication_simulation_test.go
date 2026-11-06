@@ -106,6 +106,16 @@ func TestReplicationSimulation(t *testing.T) {
 			err = validateWorkflowReplication(t, op, simCfg)
 		case simTypes.ReplicationSimulationOperationValidatePendingActivity:
 			err = validatePendingActivity(t, op, simCfg)
+		case simTypes.ReplicationSimulationOperationTerminateWorkflow:
+			err = terminateWorkflow(t, op, simCfg, sim)
+		case simTypes.ReplicationSimulationOperationCompareClusters:
+			err = compareClusters(t, op, simCfg, sim)
+		case simTypes.ReplicationSimulationOperationValidateRawHistory:
+			err = validateRawHistory(t, op, simCfg, sim)
+		case simTypes.ReplicationSimulationOperationValidateDLQEmpty:
+			err = validateDLQEmpty(t, op, simCfg)
+		case simTypes.ReplicationSimulationOperationMarker:
+			simTypes.Logf(t, "SIM-MARKER %s", op.Marker)
 		default:
 			require.Failf(t, "unknown operation type", "operation type: %s", op.Type)
 		}
@@ -259,7 +269,12 @@ func changeActiveClusters(
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	descResp, err := simCfg.MustGetFrontendClient(t, simCfg.PrimaryCluster).DescribeDomain(ctx, &types.DescribeDomainRequest{Name: common.StringPtr(op.Domain)})
+	// op.Cluster lets a scenario issue the failover on the new active cluster, e.g. while it can't reach the primary
+	cluster := simCfg.PrimaryCluster
+	if op.Cluster != "" {
+		cluster = op.Cluster
+	}
+	descResp, err := simCfg.MustGetFrontendClient(t, cluster).DescribeDomain(ctx, &types.DescribeDomainRequest{Name: common.StringPtr(op.Domain)})
 	if err != nil {
 		return fmt.Errorf("failed to describe domain %s: %w", op.Domain, err)
 	}
@@ -284,7 +299,7 @@ func changeActiveClusters(
 
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_, err = simCfg.MustGetFrontendClient(t, simCfg.PrimaryCluster).UpdateDomain(ctx, updateDomainRequest)
+	_, err = simCfg.MustGetFrontendClient(t, cluster).UpdateDomain(ctx, updateDomainRequest)
 	if err != nil {
 		return fmt.Errorf("failed to update ActiveClusters, err: %w", err)
 	}

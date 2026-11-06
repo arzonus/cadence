@@ -52,6 +52,11 @@ const (
 	ReplicationSimulationOperationSignalWithStartWorkflow     ReplicationSimulationOperation = "signal_with_start_workflow"
 	ReplicationSimulationOperationValidateWorkflowReplication ReplicationSimulationOperation = "validate_workflow_replication"
 	ReplicationSimulationOperationValidatePendingActivity     ReplicationSimulationOperation = "validate_pending_activity"
+	ReplicationSimulationOperationTerminateWorkflow           ReplicationSimulationOperation = "terminate_workflow"
+	ReplicationSimulationOperationCompareClusters             ReplicationSimulationOperation = "compare_clusters"
+	ReplicationSimulationOperationValidateRawHistory          ReplicationSimulationOperation = "validate_raw_history"
+	ReplicationSimulationOperationValidateDLQEmpty            ReplicationSimulationOperation = "validate_dlq_empty"
+	ReplicationSimulationOperationMarker                      ReplicationSimulationOperation = "marker"
 )
 
 type ReplicationSimulationConfig struct {
@@ -68,6 +73,9 @@ type ReplicationSimulationConfig struct {
 
 type ReplicationDomainConfig struct {
 	ActiveClusterName string `yaml:"activeClusterName"`
+
+	// RetentionDays is the workflow retention in days; unset means 1. 0 needs system.minRetentionDays: 0 in the dynamic config.
+	RetentionDays *int32 `yaml:"retentionDays"`
 
 	// ClusterAttributes specifies the Attributes for a domain and is passed to ActiveClusters in the RegisterDomainRequest
 	// It is a simplified expression for the AttributeScopes type
@@ -114,6 +122,9 @@ type Operation struct {
 	// This can be a sub-set of the total AttributeScopes for the domain
 	NewClusterAttributes ClusterAttributesMap `yaml:"newClusterAttributes"`
 	FailoverTimeout      *int32               `yaml:"failoverTimeoutSec"`
+
+	// Marker is logged as "SIM-MARKER <marker>" by the marker op, so an external script can react to it (e.g. cut the network)
+	Marker string `yaml:"marker"`
 
 	// RunIDKey specifies a key to store/retrieve RunID for this operation
 	RunIDKey string `yaml:"runIDKey"`
@@ -228,10 +239,14 @@ func (s *ReplicationSimulationConfig) MustRegisterDomain(
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	retentionDays := int32(1)
+	if domainCfg.RetentionDays != nil {
+		retentionDays = *domainCfg.RetentionDays
+	}
 	req := &types.RegisterDomainRequest{
 		Name:                                   domainName,
 		Clusters:                               clusters,
-		WorkflowExecutionRetentionPeriodInDays: 1,
+		WorkflowExecutionRetentionPeriodInDays: retentionDays,
 		IsGlobalDomain:                         true,
 	}
 

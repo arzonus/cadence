@@ -1,0 +1,85 @@
+# Warm storage replication scenario (see research/replication-lag.md).
+# Run: ./simulation/replication/run.sh --scenario warmlagreset
+# The dynamic config config/dynamicconfig/replication_simulation_warmlagreset.yml turns system.enableWarmStorage on in both clusters.
+# (e) forced failover to cluster1 during a 180s cut, then reset on cluster1 of a run that is Warm on cluster0 (rs-warm closed everywhere before the cut, rs-long closed only on cluster0).
+
+clusters:
+  cluster0:
+    grpcEndpoint: "cadence-cluster0:7833"
+  cluster1:
+    grpcEndpoint: "cadence-cluster1:7833"
+
+primaryCluster: "cluster0"
+
+domains:
+  test-domain:
+    activeClusterName: cluster0
+
+operations:
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: rs-long
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 6
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: rs-warm
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 1
+  - op: marker
+    at: 14s
+    marker: lag-cut
+  - op: validate
+    at: 60s
+    workflowID: rs-long
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: change_active_clusters
+    at: 62s
+    domain: test-domain
+    newActiveCluster: cluster1
+    cluster: cluster1
+  - op: reset_workflow
+    at: 66s
+    workflowID: rs-warm
+    cluster: cluster1
+    domain: test-domain
+    eventID: 4
+  - op: reset_workflow
+    at: 68s
+    workflowID: rs-long
+    cluster: cluster1
+    domain: test-domain
+    eventID: 4
+  - op: marker
+    at: 186s
+    marker: lag-restore
+  - op: compare_clusters
+    at: 215s
+    workflowID: rs-long
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 215s
+    workflowID: rs-warm
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: validate_dlq_empty
+    at: 290s
+    cluster: cluster0
+  - op: validate_dlq_empty
+    at: 290s
+    cluster: cluster1
+  - op: marker
+    at: 292s
+    marker: rows-final

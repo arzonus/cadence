@@ -1,0 +1,154 @@
+# Warm storage replication scenario (see research/replication-lag.md).
+# Run: ./simulation/replication/run.sh --scenario warmmixed
+# The dynamic config config/dynamicconfig/replication_simulation_warmmixed.yml turns system.enableWarmStorage on in both clusters.
+# Graceful failover there and back, with warm storage on in one cluster only (which one is picked by the run's dynamic config override).
+
+clusters:
+  cluster0:
+    grpcEndpoint: "cadence-cluster0:7833"
+  cluster1:
+    grpcEndpoint: "cadence-cluster1:7833"
+
+primaryCluster: "cluster0"
+
+domains:
+  test-domain:
+    activeClusterName: cluster0
+
+operations:
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: mx-a
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: mx-b
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 12
+  - op: start_workflow
+    at: 0s
+    workflowType: fail-workflow
+    workflowID: mx-fail
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: change_active_clusters
+    at: 25s
+    domain: test-domain
+    newActiveCluster: cluster1
+    failoverTimeoutSec: 5
+  - op: validate
+    at: 80s
+    workflowID: mx-a
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 80s
+    workflowID: mx-a
+    cluster: cluster1
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 80s
+    workflowID: mx-b
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 80s
+    workflowID: mx-b
+    cluster: cluster1
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 80s
+    workflowID: mx-fail
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: failed
+  - op: validate
+    at: 80s
+    workflowID: mx-fail
+    cluster: cluster1
+    domain: test-domain
+    want:
+      status: failed
+  - op: change_active_clusters
+    at: 85s
+    domain: test-domain
+    newActiveCluster: cluster0
+    failoverTimeoutSec: 5
+  - op: reset_workflow
+    at: 100s
+    workflowID: mx-a
+    cluster: cluster0
+    domain: test-domain
+    eventID: 4
+  - op: start_workflow
+    at: 100s
+    workflowType: activity-loop-workflow
+    workflowID: mx-c
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: compare_clusters
+    at: 140s
+    workflowID: mx-a
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 140s
+    workflowID: mx-b
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 140s
+    workflowID: mx-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: validate
+    at: 140s
+    workflowID: mx-c
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 140s
+    workflowID: mx-c
+    cluster: cluster1
+    domain: test-domain
+    want:
+      status: completed
+  - op: compare_clusters
+    at: 140s
+    workflowID: mx-c
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: validate_dlq_empty
+    at: 160s
+    cluster: cluster0
+  - op: validate_dlq_empty
+    at: 160s
+    cluster: cluster1
+  - op: marker
+    at: 165s
+    marker: rows-final
