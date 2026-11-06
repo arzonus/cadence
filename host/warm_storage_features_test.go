@@ -571,7 +571,8 @@ func (s *IntegrationSuite) warmChildDecision(child string, policy types.ParentCl
 			ParentClosePolicy: &policy}}
 }
 
-// Parent closes and moves while the child runs, under each parent close policy; then the child finishes.
+// Parent closes while the child runs, under each parent close policy; then the child finishes. The parent
+// stays hot with the flag on because its child is still pending when it closes.
 func (s *IntegrationSuite) TestWarmStorage_ParentClosePolicies_SLOW() {
 	s.warmBothWays(func(warm bool) []string {
 		policies := []types.ParentClosePolicy{types.ParentClosePolicyTerminate, types.ParentClosePolicyRequestCancel, types.ParentClosePolicyAbandon}
@@ -586,7 +587,9 @@ func (s *IntegrationSuite) TestWarmStorage_ParentClosePolicies_SLOW() {
 			cs = append(cs, c{parent, child, run})
 			ids = append(ids, [2]string{parent, run})
 		}
-		s.warmSettle(warm, ids...)
+		// A parent that closes while its child still runs lists the child in Describe, which the slim row cannot
+		// carry, so it stays hot in both modes (6f3562b87). Wait for the close, check that, and evict.
+		s.warmSettle(false, ids...)
 		var out []string
 		for i, p := range policies {
 			n := p.String()
@@ -1036,4 +1039,39 @@ func (s *IntegrationSuite) TestWarmStorage_FlagOnOffOn_SLOW() {
 	s.Equal(lines[0], lines[2])
 	h, w := s.warmRows(all[1][0], all[1][1])
 	s.Equal([]int{1, 0}, []int{h, w}, "the run closed while the flag was off must stay hot (no migration)")
+}
+
+// A run that times out with a started activity still lists it in Describe, which a slim row cannot carry:
+// it must stay hot with the flag on, and Describe must equal the flag-off one, pending activity included.
+func (s *IntegrationSuite) TestWarmStorage_TimedOutWithStartedActivityStaysHot_SLOW() {
+	s.warmBothWays(func(warm bool) []string {
+		id := "warm-pendingact-" + uuid.New()
+		run := s.warmStart(id, func(r *types.StartWorkflowExecutionRequest) {
+			r.ExecutionStartToCloseTimeoutSeconds = common.Int32Ptr(4)
+		})
+		s.warmDecide(id, "bin-1", &types.Decision{
+			DecisionType: types.DecisionTypeScheduleActivityTask.Ptr(),
+			ScheduleActivityTaskDecisionAttributes: &types.ScheduleActivityTaskDecisionAttributes{
+				ActivityID: "a1", ActivityType: &types.ActivityType{Name: "warm-act"}, TaskList: &types.TaskList{Name: id},
+				ScheduleToCloseTimeoutSeconds: common.Int32Ptr(100), ScheduleToStartTimeoutSeconds: common.Int32Ptr(100),
+				StartToCloseTimeoutSeconds: common.Int32Ptr(100), HeartbeatTimeoutSeconds: common.Int32Ptr(100)}})
+		ctx, cancel := createContext()
+		defer cancel()
+		poll, err := s.Engine.PollForActivityTask(ctx, &types.PollForActivityTaskRequest{Domain: s.DomainName, TaskList: &types.TaskList{Name: id}, Identity: "warm"})
+		s.NoError(err)
+		s.NotEmpty(poll.TaskToken, "activity must be started")
+		s.Equal("TIMED_OUT", s.warmWaitStatus(id, run, "TIMED_OUT"))
+		// never moved, in either mode
+		time.Sleep(5 * time.Second)
+		hot, w := s.warmRows(id, run)
+		s.Equal([]int{1, 0}, []int{hot, w}, "a closed run with an activity in flight must stay hot (warm=%v)", warm)
+		shard := int32(common.WorkflowIDToHistoryShard(id, s.TestClusterConfig.HistoryConfig.NumHistoryShards))
+		s.NoError(s.HistoryClient.CloseShard(ctx, &types.CloseShardRequest{ShardID: shard}))
+		time.Sleep(time.Second)
+		out := s.warmDescribeLines(id, run)
+		for _, a := range s.warmDescribe(id, run).PendingActivities {
+			out = append(out, fmt.Sprintf("activity=%s/%v/%v", a.ActivityID, a.State, a.ActivityType.Name))
+		}
+		return out
+	})
 }
