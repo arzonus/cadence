@@ -28,7 +28,6 @@ import (
 	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/cache"
 	"github.com/uber/cadence/common/constants"
-	"github.com/uber/cadence/common/log/tag"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/history/execution"
@@ -70,15 +69,7 @@ func (e *historyEngineImpl) DescribeWorkflowExecution(
 		return nil, err
 	}
 
-	// warm runs drop reset points from the stored row, which reads back as empty, not nil
-	if wei := result.WorkflowExecutionInfo; wei.CloseStatus != nil && (wei.AutoResetPoints == nil || len(wei.AutoResetPoints.Points) == 0) && e.config.EnableWarmStorage(domainID) {
-		// best effort: Describe worked before warm storage, so an unreadable history mustn't fail it now
-		if points, err := rebuildAutoResetPoints(ctx, e.shard, domainID, mutableState); err != nil {
-			e.logger.Warn("could not rebuild auto-reset points for a closed run", tag.WorkflowDomainID(domainID), tag.Error(err))
-		} else {
-			wei.AutoResetPoints = points
-		}
-	}
+	e.restoreDroppedResetPoints(ctx, domainID, mutableState, result.WorkflowExecutionInfo)
 
 	return result, nil
 }

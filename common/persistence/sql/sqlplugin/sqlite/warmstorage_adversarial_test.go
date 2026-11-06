@@ -114,6 +114,7 @@ func TestAdversarial_WarmReadEqualsHotRead(t *testing.T) {
 	require.NoError(t, err, "warm read")
 
 	hot.ExecutionInfo.AutoResetPoints = &types.ResetPoints{} // the manager decodes a missing blob to an empty, non-nil value
+	hot.ExecutionInfo.AutoResetPointsDropped = true
 	assert.Equal(t, hot.ExecutionInfo, warm.ExecutionInfo)
 	assert.Equal(t, hot.ExecutionStats, warm.ExecutionStats)
 	assert.Equal(t, hot.VersionHistories, warm.VersionHistories)

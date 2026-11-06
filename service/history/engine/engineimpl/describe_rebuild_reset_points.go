@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/uber/cadence/common/definition"
+	"github.com/uber/cadence/common/log/tag"
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/history/execution"
 	"github.com/uber/cadence/service/history/shard"
@@ -38,4 +39,26 @@ func rebuildAutoResetPoints(
 		return nil, err
 	}
 	return rebuilt.GetExecutionInfo().AutoResetPoints, nil
+}
+
+// restoreDroppedResetPoints rebuilds the points of a run that was read from closed_executions, which drops them.
+// The points are kept on the cached state and the marker is cleared, so history is replayed once per cache entry.
+// It is best effort: Describe worked before warm storage, so an unreadable history mustn't fail it now.
+func (e *historyEngineImpl) restoreDroppedResetPoints(
+	ctx context.Context,
+	domainID string,
+	ms execution.MutableState,
+	described *types.WorkflowExecutionInfo,
+) {
+	info := ms.GetExecutionInfo()
+	if !info.AutoResetPointsDropped {
+		return
+	}
+	points, err := rebuildAutoResetPoints(ctx, e.shard, domainID, ms)
+	if err != nil {
+		e.logger.Warn("could not rebuild auto-reset points for a closed run", tag.WorkflowDomainID(domainID), tag.Error(err))
+		return
+	}
+	info.AutoResetPoints, info.AutoResetPointsDropped = points, false
+	described.AutoResetPoints = points
 }

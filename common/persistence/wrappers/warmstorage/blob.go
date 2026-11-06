@@ -42,6 +42,7 @@ func fromBlob(
 	executionInfo.DomainID = key.DomainID
 	executionInfo.WorkflowID = key.WorkflowID
 	executionInfo.RunID = key.RunID
+	executionInfo.AutoResetPointsDropped = true
 
 	versionHistoriesBlob := persistence.NewDataBlob(info.GetVersionHistories(), constants.EncodingType(info.GetVersionHistoriesEncoding()))
 	versionHistories, err := serializer.DeserializeVersionHistories(versionHistoriesBlob)

@@ -46,7 +46,8 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 	resp, err := mgr.GetWorkflowExecution(ctx, getReq)
 	require.NoError(t, err, "Warm run must be readable")
 	got := resp.State.ExecutionInfo
-	assert.Empty(t, got.AutoResetPoints.Points, "read came from the slim row")
+	assert.True(t, got.AutoResetPointsDropped, "read came from the slim row")
+	assert.Empty(t, got.AutoResetPoints.Points)
 	assert.Equal(t, int64(3), got.NextEventID)
 	assert.Equal(t, persistence.WorkflowStateCompleted, got.State)
 	assert.Equal(t, persistence.WorkflowCloseStatusCompleted, got.CloseStatus)

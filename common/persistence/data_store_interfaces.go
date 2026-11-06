@@ -489,6 +489,8 @@ type (
 		ClientFeatureVersion               string
 		ClientImpl                         string
 		AutoResetPoints                    *DataBlob
+		// AutoResetPointsDropped is not persisted: set when the row was read from closed_executions.
+		AutoResetPointsDropped bool
 		// for retry
 		Attempt            int32
 		HasRetryPolicy     bool
