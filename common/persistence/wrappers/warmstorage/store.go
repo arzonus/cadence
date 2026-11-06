@@ -183,9 +183,9 @@ func (s *store) ConflictResolveWorkflowExecution(ctx context.Context, request *p
 }
 
 // restoreMovedRuns writes the executions row back for each run that has a slim row and no executions row.
-// The slim row stays: reads prefer executions, and retention deletes both. A run that is restored stays in
-// executions until retention, and its auto-reset points are gone for good (Describe only rebuilds them for
-// rows read from closed_executions).
+// The slim row stays: reads prefer executions, and retention deletes both. A restored run moves again on its next
+// close, otherwise it stays in executions until retention. Its reset points are gone from the row, so
+// markRestoredRun flags it on read and Describe rebuilds them.
 func (s *store) restoreMovedRuns(
 	ctx context.Context,
 	shardID persistence.ShardID,
