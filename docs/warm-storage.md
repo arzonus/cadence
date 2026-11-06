@@ -6,6 +6,9 @@ When a workflow run closes, the close transfer task finishes its visibility, par
 then calls `ExecutionManager.MoveToClosedExecutions`. The store decorator
 (`common/persistence/wrappers/warmstorage`) copies a slim row into the `closed_executions` table, keyed by
 (domain ID, workflow ID, run ID), and deletes the run's `executions` row. The `executions` partition stays small.
+On Cassandra the partition key is (domain ID, workflow ID) with run ID as the clustering key, so every closed run of
+one workflow ID shares a partition. Retention bounds its width; a cron or continue-as-new chain with a very short
+period and long retention makes the widest partitions.
 
 - The slim row holds the run's `WorkflowExecutionInfo` minus auto-reset points, plus version histories. Memo and
   search attributes are kept. Activity, timer, child, signal and request-cancel maps are dropped (they are empty on a
