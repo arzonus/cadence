@@ -1,0 +1,55 @@
+# Dynamic config for the "warmlagretention" replication simulation (simulation/replication/testdata/replication_simulation_warmlagretention.yaml).
+system.writeVisibilityStoreName:
+  - value: "db"
+system.readVisibilityStoreName:
+  - value: "db"
+history.replicatorTaskBatchSize:
+  - value: 25
+    constraints: {}
+frontend.failoverCoolDown:
+  - value: 5s
+history.ReplicationTaskProcessorStartWait: # default is 5s. repl task processor sleeps this much before processing received messages.
+  - value: 10ms
+system.enableWarmStorage:
+  - value: true
+    constraints: {}
+# 60x compression: 180s here = 3h
+history.standbyTaskMissingEventsResendDelay:   # 15m default
+  - value: 15s
+    constraints: {}
+history.standbyTaskMissingEventsDiscardDelay:  # 25m default
+  - value: 25s
+    constraints: {}
+history.standbyClusterDelay:                   # 5m default
+  - value: 5s
+    constraints: {}
+history.cacheTTL:                              # 1h default
+  - value: 1m
+    constraints: {}
+history.eventsCacheTTL:                        # 1h default
+  - value: 1m
+    constraints: {}
+history.ReplicationTaskProcessorErrorSecondRetryExpiration:  # 5m default
+  - value: 5s
+    constraints: {}
+history.ReplicationTaskProcessorErrorSecondRetryMaxWait:     # 30s default
+  - value: 500ms
+    constraints: {}
+history.ReplicationTaskFetcherErrorRetryWait:  # 1s default
+  - value: 20ms
+    constraints: {}
+history.standbyTaskReReplicationContextTimeout:  # 3m default
+  - value: 3s
+    constraints: {}
+history.timerProcessorMaxPollInterval:         # 5m default; a timer generated in the past (retention 0) waits for the next poll
+  - value: 5s
+    constraints: {}
+history.timerProcessorUpdateAckInterval:       # 30s default
+  - value: 500ms
+    constraints: {}
+system.minRetentionDays:
+  - value: 0
+    constraints: {}
+system.workflowDeletionJitterRange:
+  - value: 1
+    constraints: {}

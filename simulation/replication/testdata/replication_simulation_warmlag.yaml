@@ -1,0 +1,356 @@
+# Warm storage replication scenario (see research/replication-lag.md).
+# Run: ./simulation/replication/run.sh --scenario warmlag
+# The dynamic config config/dynamicconfig/replication_simulation_warmlag.yml turns system.enableWarmStorage on in both clusters.
+# (a)+(b): cluster1 is cut off for 180s (stands in for 3h, 60x). The active closes and moves runs; the standby catches up afterwards. Raw history (what the history resender reads) is read on the active during the lag.
+
+clusters:
+  cluster0:
+    grpcEndpoint: "cadence-cluster0:7833"
+  cluster1:
+    grpcEndpoint: "cadence-cluster1:7833"
+
+primaryCluster: "cluster0"
+
+domains:
+  test-domain:
+    activeClusterName: cluster0
+
+operations:
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: pre-complete
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 0s
+    workflowType: fail-workflow
+    workflowID: pre-fail
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: pre-timeout
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 8s
+    activityCount: 20
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: pre-terminate
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 20
+  - op: terminate_workflow
+    at: 6s
+    workflowID: pre-terminate
+    cluster: cluster0
+    domain: test-domain
+  - op: start_workflow
+    at: 0s
+    workflowType: continue-as-new-workflow
+    workflowID: pre-can
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 0s
+    workflowType: activity-loop-workflow
+    workflowID: pre-running
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 12
+  - op: marker
+    at: 6s
+    marker: lag-cut
+  - op: start_workflow
+    at: 10s
+    workflowType: activity-loop-workflow
+    workflowID: lag-complete
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 10s
+    workflowType: fail-workflow
+    workflowID: lag-fail
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+  - op: start_workflow
+    at: 10s
+    workflowType: activity-loop-workflow
+    workflowID: lag-timeout
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 8s
+    activityCount: 20
+  - op: start_workflow
+    at: 10s
+    workflowType: activity-loop-workflow
+    workflowID: lag-terminate
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 20
+  - op: terminate_workflow
+    at: 16s
+    workflowID: lag-terminate
+    cluster: cluster0
+    domain: test-domain
+  - op: start_workflow
+    at: 10s
+    workflowType: continue-as-new-workflow
+    workflowID: lag-can
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 2
+  - op: start_workflow
+    at: 10s
+    workflowType: activity-loop-workflow
+    workflowID: lag-running
+    cluster: cluster0
+    domain: test-domain
+    workflowExecutionStartToCloseTimeout: 400s
+    activityCount: 12
+  - op: validate
+    at: 60s
+    workflowID: pre-complete
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 60s
+    workflowID: pre-fail
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: failed
+  - op: validate
+    at: 60s
+    workflowID: pre-timeout
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: timed-out
+  - op: validate
+    at: 60s
+    workflowID: pre-terminate
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: terminated
+  - op: validate
+    at: 60s
+    workflowID: pre-can
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 60s
+    workflowID: lag-complete
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 60s
+    workflowID: lag-fail
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: failed
+  - op: validate
+    at: 60s
+    workflowID: lag-timeout
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: timed-out
+  - op: validate
+    at: 60s
+    workflowID: lag-terminate
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: terminated
+  - op: validate
+    at: 60s
+    workflowID: lag-can
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 80s
+    workflowID: pre-running
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate
+    at: 80s
+    workflowID: lag-running
+    cluster: cluster0
+    domain: test-domain
+    want:
+      status: completed
+  - op: validate_raw_history
+    at: 85s
+    workflowID: pre-complete
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: pre-fail
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: pre-timeout
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: pre-terminate
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: pre-can
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: lag-complete
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: lag-fail
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: lag-timeout
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: lag-terminate
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: lag-can
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: pre-running
+    cluster: cluster0
+    domain: test-domain
+  - op: validate_raw_history
+    at: 85s
+    workflowID: lag-running
+    cluster: cluster0
+    domain: test-domain
+  - op: marker
+    at: 90s
+    marker: rows-active-moved
+  - op: marker
+    at: 186s
+    marker: lag-restore
+  - op: compare_clusters
+    at: 190s
+    workflowID: pre-complete
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: pre-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: pre-timeout
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: pre-terminate
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: pre-can
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: lag-complete
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: lag-fail
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: lag-timeout
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: lag-terminate
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: lag-can
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: pre-running
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: compare_clusters
+    at: 190s
+    workflowID: lag-running
+    sourceCluster: cluster0
+    targetCluster: cluster1
+    domain: test-domain
+  - op: validate_dlq_empty
+    at: 260s
+    cluster: cluster0
+  - op: validate_dlq_empty
+    at: 260s
+    cluster: cluster1
+  - op: marker
+    at: 262s
+    marker: rows-final

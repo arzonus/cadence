@@ -1,0 +1,18 @@
+# Dynamic config for the "warmmixed" replication simulation (simulation/replication/testdata/replication_simulation_warmmixed.yaml).
+system.writeVisibilityStoreName:
+  - value: "db"
+system.readVisibilityStoreName:
+  - value: "db"
+history.replicatorTaskBatchSize:
+  - value: 25
+    constraints: {}
+frontend.failoverCoolDown:
+  - value: 5s
+history.ReplicationTaskProcessorStartWait: # default is 5s. repl task processor sleeps this much before processing received messages.
+  - value: 10ms
+system.enableWarmStorage:
+  - value: true
+    constraints: {}
+history.standbyClusterDelay:
+  - value: 5s
+    constraints: {}
