@@ -58,8 +58,8 @@ until retention has removed the Warm rows. Nothing needs migrating back.
 ## Known limits
 
 - Runs closed before the flag was turned on are not migrated.
-- Runs that close with an activity or child still in flight (timed out, terminated) are not moved, so Describe keeps
-  listing them exactly as before.
+- Runs that close with an activity or child still in flight (timed out, terminated, or a parent whose children are
+  still running) are not moved, so Describe keeps listing them exactly as before.
 - A write to a Warm run puts its `executions` row back (the slim row stays until retention). If the write leads to a
   new close (for example a replicated branch that closes at a higher version), the close task moves the run again.
   Otherwise (a lower-version backfill after a failover) it stays in `executions` until retention; reads prefer the hot
