@@ -464,6 +464,9 @@ type (
 		IsWorkflowExecutionExists(ctx context.Context, shardID int, domainID, workflowID, runID string) (bool, error)
 		// Delete the workflow execution row
 		DeleteWorkflowExecution(ctx context.Context, shardID int, domainID, workflowID, runID string) error
+		// Delete the workflow execution row only if its next_event_id is nextEventID. Returns
+		// WorkflowOperationConditionFailure if it is another value, and types.EntityNotExistsError if the row is gone.
+		DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error
 		// Read the workflow_timer_tasks set from the execution row
 		SelectWorkflowTimerTasks(ctx context.Context, shardID int, domainID, workflowID, runID string) ([]persistence.HistoryTaskKey, error)
 

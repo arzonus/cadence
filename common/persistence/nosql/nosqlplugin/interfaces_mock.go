@@ -350,6 +350,20 @@ func (mr *MockDBMockRecorder) DeleteWorkflowExecution(ctx, shardID, domainID, wo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWorkflowExecution", reflect.TypeOf((*MockDB)(nil).DeleteWorkflowExecution), ctx, shardID, domainID, workflowID, runID)
 }
 
+// DeleteWorkflowExecutionIfNextEventID mocks base method.
+func (m *MockDB) DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteWorkflowExecutionIfNextEventID", ctx, shardID, domainID, workflowID, runID, nextEventID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteWorkflowExecutionIfNextEventID indicates an expected call of DeleteWorkflowExecutionIfNextEventID.
+func (mr *MockDBMockRecorder) DeleteWorkflowExecutionIfNextEventID(ctx, shardID, domainID, workflowID, runID, nextEventID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWorkflowExecutionIfNextEventID", reflect.TypeOf((*MockDB)(nil).DeleteWorkflowExecutionIfNextEventID), ctx, shardID, domainID, workflowID, runID, nextEventID)
+}
+
 // GetQueueSize mocks base method.
 func (m *MockDB) GetQueueSize(ctx context.Context, queueType persistence.QueueType) (int64, error) {
 	m.ctrl.T.Helper()
@@ -1875,6 +1889,20 @@ func (m *MocktableCRUD) DeleteWorkflowExecution(ctx context.Context, shardID int
 func (mr *MocktableCRUDMockRecorder) DeleteWorkflowExecution(ctx, shardID, domainID, workflowID, runID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWorkflowExecution", reflect.TypeOf((*MocktableCRUD)(nil).DeleteWorkflowExecution), ctx, shardID, domainID, workflowID, runID)
+}
+
+// DeleteWorkflowExecutionIfNextEventID mocks base method.
+func (m *MocktableCRUD) DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteWorkflowExecutionIfNextEventID", ctx, shardID, domainID, workflowID, runID, nextEventID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteWorkflowExecutionIfNextEventID indicates an expected call of DeleteWorkflowExecutionIfNextEventID.
+func (mr *MocktableCRUDMockRecorder) DeleteWorkflowExecutionIfNextEventID(ctx, shardID, domainID, workflowID, runID, nextEventID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWorkflowExecutionIfNextEventID", reflect.TypeOf((*MocktableCRUD)(nil).DeleteWorkflowExecutionIfNextEventID), ctx, shardID, domainID, workflowID, runID, nextEventID)
 }
 
 // GetQueueSize mocks base method.
@@ -4041,6 +4069,20 @@ func (m *MockWorkflowCRUD) DeleteWorkflowExecution(ctx context.Context, shardID 
 func (mr *MockWorkflowCRUDMockRecorder) DeleteWorkflowExecution(ctx, shardID, domainID, workflowID, runID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWorkflowExecution", reflect.TypeOf((*MockWorkflowCRUD)(nil).DeleteWorkflowExecution), ctx, shardID, domainID, workflowID, runID)
+}
+
+// DeleteWorkflowExecutionIfNextEventID mocks base method.
+func (m *MockWorkflowCRUD) DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteWorkflowExecutionIfNextEventID", ctx, shardID, domainID, workflowID, runID, nextEventID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteWorkflowExecutionIfNextEventID indicates an expected call of DeleteWorkflowExecutionIfNextEventID.
+func (mr *MockWorkflowCRUDMockRecorder) DeleteWorkflowExecutionIfNextEventID(ctx, shardID, domainID, workflowID, runID, nextEventID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteWorkflowExecutionIfNextEventID", reflect.TypeOf((*MockWorkflowCRUD)(nil).DeleteWorkflowExecutionIfNextEventID), ctx, shardID, domainID, workflowID, runID, nextEventID)
 }
 
 // InsertHistoryTasks mocks base method.

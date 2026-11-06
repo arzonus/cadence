@@ -38,13 +38,6 @@ import (
 // This prevents regressions where new migration directories are added but the
 // version constants are not updated.
 func TestSchema(t *testing.T) {
-	// Versioned dirs that ship ahead of the Version constant on purpose, so clusters that
-	// don't use the feature don't have to upgrade their schema. Remove an entry when its constant is bumped.
-	unreleased := map[string]string{
-		"cassandra_main": "0.56", // warm storage: closed_executions
-		"mysql_main":     "0.9",  // warm storage: closed_executions
-		"postgres_main":  "0.9",  // warm storage: closed_executions
-	}
 	tests := []struct {
 		name            string
 		schema          persistence.Schema
@@ -101,9 +94,6 @@ func TestSchema(t *testing.T) {
 			updates, err := tt.schema.AllUpdates()
 			if err != nil {
 				t.Fatalf("Failed to read updates: %v", err)
-			}
-			if v, ok := unreleased[tt.name]; ok && updates[len(updates)-1].Version.String() == v {
-				updates = updates[:len(updates)-1]
 			}
 			t.Run("correct latest version", func(t *testing.T) {
 				declaredVersion, err := persistence.ParseVersion(tt.declaredVersion)

@@ -73,6 +73,10 @@ func (db *ddb) DeleteWorkflowExecution(ctx context.Context, shardID int, domainI
 	panic("TODO")
 }
 
+func (db *ddb) DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error {
+	panic("TODO")
+}
+
 func (db *ddb) SelectWorkflowTimerTasks(ctx context.Context, shardID int, domainID, workflowID, runID string) ([]persistence.HistoryTaskKey, error) {
 	panic("TODO")
 }

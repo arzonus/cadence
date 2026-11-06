@@ -489,6 +489,8 @@ type (
 		ClientFeatureVersion               string
 		ClientImpl                         string
 		AutoResetPoints                    *DataBlob
+		// AutoResetPointsDropped is not persisted: set when the row was read from closed_executions.
+		AutoResetPointsDropped bool
 		// for retry
 		Attempt            int32
 		HasRetryPolicy     bool
@@ -677,6 +679,9 @@ type (
 		VersionHistories *DataBlob
 		StartVersion     int64
 		LastWriteVersion int64
+		// RestoreClosedRun is not persisted. Only the warm storage rehydrate sets it, to let a create in zombie mode
+		// write a completed run back.
+		RestoreClosedRun bool
 
 		ActivityInfos       []*InternalActivityInfo
 		TimerInfos          []*TimerInfo

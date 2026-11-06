@@ -84,11 +84,12 @@ func closedState(t *testing.T, key persistence.ClosedExecutionKey) *persistence.
 	}
 }
 
-// expectedSlimState is what reads return for a moved run: same execution info minus auto-reset points,
-// empty pending-work maps, no checksum.
+// expectedSlimState is what reads return for a moved run: same execution info minus auto-reset points (marked
+// as dropped), empty pending-work maps, no checksum.
 func expectedSlimState(t *testing.T, full *persistence.InternalWorkflowMutableState) *persistence.InternalWorkflowMutableState {
 	info := *full.ExecutionInfo
 	info.AutoResetPoints = nil
+	info.AutoResetPointsDropped = true
 	return &persistence.InternalWorkflowMutableState{
 		ExecutionInfo:       &info,
 		VersionHistories:    full.VersionHistories,
@@ -193,7 +194,7 @@ func TestBlobFuzz(t *testing.T) {
 			// set from the row key and version histories on read
 			"DomainID", "WorkflowID", "RunID", "NextEventID",
 			// dropped on purpose, Describe rebuilds them
-			"AutoResetPoints",
+			"AutoResetPoints", "AutoResetPointsDropped",
 			// UUID-typed in the blob, so random strings can't round trip; covered by TestBlobRoundTrip
 			"FirstExecutionRunID", "ParentDomainID", "ParentRunID", "ParentWorkflowID", "InitiatedID",
 			// only kept when CancelRequested is set

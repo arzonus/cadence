@@ -433,7 +433,8 @@ func applyWorkflowSnapshotTxAsNew(
 		startVersion,
 		lastWriteVersion,
 		shardID,
-		parser); err != nil {
+		parser,
+		workflowSnapshot.RestoreClosedRun); err != nil {
 		return err
 	}
 
@@ -1047,12 +1048,14 @@ func createExecution(
 	lastWriteVersion int64,
 	shardID int,
 	parser serialization.Parser,
+	restoreClosedRun bool,
 ) error {
 
 	// validate workflow state & close status
 	if err := p.ValidateCreateWorkflowStateCloseStatus(
 		executionInfo.State,
-		executionInfo.CloseStatus); err != nil {
+		executionInfo.CloseStatus,
+		restoreClosedRun); err != nil {
 		return err
 	}
 

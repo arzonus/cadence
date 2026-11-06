@@ -1117,7 +1117,7 @@ func TestNosqlExecutionStoreUtilsExtended(t *testing.T) {
 					Data:     []byte(`[{"Branches":[{"BranchID":"create-branch-id","BeginNodeID":1,"EndNodeID":2}]}]`),
 				}
 				checksum := checksum.Checksum{Version: 1, Value: []byte("create-checksum")}
-				return store.prepareCreateWorkflowExecutionTxn(executionInfo, versionHistories, checksum, time.Now(), 123)
+				return store.prepareCreateWorkflowExecutionTxn(executionInfo, versionHistories, checksum, time.Now(), 123, false)
 			},
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.NoError(t, err)
@@ -1141,7 +1141,7 @@ func TestNosqlExecutionStoreUtilsExtended(t *testing.T) {
 					Data:     []byte(`[{"Branches":[{"BranchID":"create-branch-id","BeginNodeID":1,"EndNodeID":2}]}]`),
 				}
 				checksum := checksum.Checksum{Version: 1, Value: []byte("create-checksum")}
-				return store.prepareCreateWorkflowExecutionTxn(executionInfo, versionHistories, checksum, time.Now(), 123)
+				return store.prepareCreateWorkflowExecutionTxn(executionInfo, versionHistories, checksum, time.Now(), 123, false)
 			},
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.Error(t, err)

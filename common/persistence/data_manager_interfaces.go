@@ -479,11 +479,13 @@ type (
 		ClientFeatureVersion               string
 		ClientImpl                         string
 		AutoResetPoints                    *types.ResetPoints
-		Memo                               map[string][]byte
-		SearchAttributes                   map[string][]byte
-		PartitionConfig                    map[string]string
-		ExecutionStatus                    types.WorkflowExecutionStatus
-		ScheduledExecutionTimestamp        int64 // unit is unix nano, used to record the actual execution timestamp if it's a cron workflow
+		// AutoResetPointsDropped is not persisted: the state was read from closed_executions, which drops AutoResetPoints.
+		AutoResetPointsDropped      bool
+		Memo                        map[string][]byte
+		SearchAttributes            map[string][]byte
+		PartitionConfig             map[string]string
+		ExecutionStatus             types.WorkflowExecutionStatus
+		ScheduledExecutionTimestamp int64 // unit is unix nano, used to record the actual execution timestamp if it's a cron workflow
 		// for retry
 		Attempt            int32
 		HasRetryPolicy     bool
@@ -1025,6 +1027,9 @@ type (
 		WorkflowID string
 		RunID      string
 		DomainName string
+		// NextEventID, when set, makes the delete conditional: it fails with ConditionFailedError if the row's
+		// next event ID is another one, and with EntityNotExistsError if the row is gone.
+		NextEventID *int64
 	}
 
 	// DeleteCurrentWorkflowExecutionRequest is used to delete the current workflow execution

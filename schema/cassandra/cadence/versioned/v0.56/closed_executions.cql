@@ -5,7 +5,7 @@ CREATE TABLE closed_executions (
     run_id        uuid,
     data          blob,
     data_encoding text,
-    PRIMARY KEY ((domain_id, workflow_id, run_id))
+    PRIMARY KEY ((domain_id, workflow_id), run_id)
 ) WITH compaction = {
     'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'
 };

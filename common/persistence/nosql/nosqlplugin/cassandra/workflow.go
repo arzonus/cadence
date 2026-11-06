@@ -344,6 +344,34 @@ func (db *CDB) DeleteCurrentWorkflow(ctx context.Context, shardID int, domainID,
 	return db.executeWithConsistencyAll(query)
 }
 
+func (db *CDB) DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error {
+	query := db.session.Query(templateDeleteWorkflowExecutionMutableStateQuery+"if next_event_id = ? ",
+		shardID,
+		rowTypeExecution,
+		domainID,
+		workflowID,
+		runID,
+		defaultVisibilityTimestamp,
+		rowTypeExecutionTaskID,
+		nextEventID,
+	).WithContext(ctx)
+
+	previous := make(map[string]interface{})
+	applied, err := query.MapScanCAS(previous)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	if _, found := previous["next_event_id"]; !found {
+		// a conditional write on a missing row reports no columns
+		return &types.EntityNotExistsError{Message: "workflow execution row does not exist"}
+	}
+	details := fmt.Sprintf("next_event_id is %v, not %v", previous["next_event_id"], nextEventID)
+	return &nosqlplugin.WorkflowOperationConditionFailure{UnknownConditionFailureDetails: &details}
+}
+
 func (db *CDB) DeleteWorkflowExecution(ctx context.Context, shardID int, domainID, workflowID, runID string) error {
 	query := db.session.Query(templateDeleteWorkflowExecutionMutableStateQuery,
 		shardID,

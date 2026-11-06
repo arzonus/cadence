@@ -67,3 +67,53 @@ func TestRebuildAutoResetPoints(t *testing.T) {
 		require.Equal(t, w.Resettable, p.Resettable)
 	}
 }
+
+// The rebuild is gated by the marker the closed_executions read sets, not by the flag, and runs once per cached state.
+func TestRestoreDroppedResetPoints(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	shardCtx := shard.NewTestContext(t, ctrl, &persistence.ShardInfo{ShardID: 0, RangeID: 1}, config.NewForTest())
+	defer shardCtx.Finish(t)
+	shardCtx.SetEventsCache(events.NewCache(shardCtx.GetShardID(), shardCtx.GetHistoryManager(), shardCtx.GetConfig(),
+		shardCtx.GetLogger(), shardCtx.GetMetricsClient(), shardCtx.GetDomainCache()))
+	domainID := historyConstants.TestDomainID
+	shardCtx.Resource.DomainCache.EXPECT().GetDomainByID(domainID).Return(historyConstants.TestGlobalDomainEntry, nil).AnyTimes()
+	shardCtx.Resource.DomainCache.EXPECT().GetDomainName(domainID).Return(historyConstants.TestDomainName, nil).AnyTimes()
+
+	_, ms, err := test.StartWorkflow(t, shardCtx, domainID)
+	require.NoError(t, err)
+	di := test.AddDecisionTaskScheduledEvent(ms)
+	started := test.AddDecisionTaskStartedEvent(ms, di.ScheduleID, "some random task list", "req")
+	_, err = ms.AddDecisionTaskCompletedEvent(di.ScheduleID, started.ID, &types.RespondDecisionTaskCompletedRequest{
+		BinaryChecksum: "bin-a",
+	}, constants.DefaultHistoryMaxAutoResetPoints)
+	require.NoError(t, err)
+	test.AddCompleteWorkflowEvent(ms, ms.GetNextEventID()-1, nil)
+	_, eventBatches, err := ms.CloseTransactionAsMutation(time.Now(), execution.TransactionPolicyActive)
+	require.NoError(t, err)
+	var history []*types.History
+	for _, b := range eventBatches {
+		history = append(history, &types.History{Events: b.Events})
+	}
+	// Once: a second replay would find no mocked read
+	shardCtx.Resource.HistoryMgr.On("ReadHistoryBranchByBatch", mock.Anything, mock.Anything).
+		Return(&persistence.ReadHistoryBranchByBatchResponse{History: history}, nil).Once()
+
+	// what a read from closed_executions looks like, whatever the flag says
+	info := ms.GetExecutionInfo()
+	info.AutoResetPoints, info.AutoResetPointsDropped = &types.ResetPoints{}, true
+	e := &historyEngineImpl{shard: shardCtx, logger: shardCtx.GetLogger()}
+
+	described := &types.WorkflowExecutionInfo{}
+	e.restoreDroppedResetPoints(context.Background(), domainID, ms, described)
+	require.Len(t, described.AutoResetPoints.Points, 1)
+	require.False(t, info.AutoResetPointsDropped)
+
+	again := &types.WorkflowExecutionInfo{}
+	e.restoreDroppedResetPoints(context.Background(), domainID, ms, again)
+	require.Nil(t, again.AutoResetPoints, "no second replay, and nothing to overwrite: the cached state already holds the points")
+
+	hot := &types.WorkflowExecutionInfo{}
+	info.AutoResetPointsDropped = false
+	e.restoreDroppedResetPoints(context.Background(), domainID, ms, hot)
+	require.Nil(t, hot.AutoResetPoints, "a hot closed run without the marker is never replayed")
+}

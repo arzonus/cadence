@@ -4,7 +4,6 @@ package sqlite
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -114,6 +113,7 @@ func TestAdversarial_WarmReadEqualsHotRead(t *testing.T) {
 	require.NoError(t, err, "warm read")
 
 	hot.ExecutionInfo.AutoResetPoints = &types.ResetPoints{} // the manager decodes a missing blob to an empty, non-nil value
+	hot.ExecutionInfo.AutoResetPointsDropped = true
 	assert.Equal(t, hot.ExecutionInfo, warm.ExecutionInfo)
 	assert.Equal(t, hot.ExecutionStats, warm.ExecutionStats)
 	assert.Equal(t, hot.VersionHistories, warm.VersionHistories)
@@ -129,7 +129,7 @@ func TestAdversarial_MoveConcurrently(t *testing.T) {
 	errs := make([]error, 8)
 	for i := range errs {
 		wg.Add(1)
-		go func() { defer wg.Done(); errs[i] = e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()) }()
+		go func(i int) { defer wg.Done(); errs[i] = e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()) }(i)
 	}
 	wg.Wait()
 	for _, err := range errs {
@@ -139,28 +139,43 @@ func TestAdversarial_MoveConcurrently(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestAdversarial_WriteToMovedRun records what the real SQL store returns for writes onto a moved run.
+// TestAdversarial_WriteToMovedRun (VERIFICATION row 11, A8): an update or a conflict resolution that targets a
+// moved run puts the row back and lands, so no event or task is lost (it used to fail with a missing row).
 func TestAdversarial_WriteToMovedRun(t *testing.T) {
-	e := newWarmEnv(t)
-	ctx := context.Background()
-	e.create(t)
-	e.closeRun(t)
-	st, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
-	require.NoError(t, err)
-	require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
+	writes := map[string]func(e *warmEnv, st *persistence.WorkflowMutableState) error{
+		"update": func(e *warmEnv, st *persistence.WorkflowMutableState) error {
+			info := st.ExecutionInfo
+			condition := info.NextEventID
+			info.NextEventID++
+			return e.base.UpdateWorkflowExecution(context.Background(), info, st.ExecutionStats, st.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil)
+		},
+		"conflict resolve": func(e *warmEnv, st *persistence.WorkflowMutableState) error {
+			info := st.ExecutionInfo
+			condition := info.NextEventID
+			info.NextEventID++
+			return e.base.ConflictResolveWorkflowExecution(context.Background(), info, st.ExecutionStats, condition, nil, nil, nil, nil, nil, nil, st.VersionHistories)
+		},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			e := newWarmEnv(t)
+			ctx := context.Background()
+			e.create(t)
+			e.closeRun(t)
+			st, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
+			require.NoError(t, err)
+			next := st.ExecutionInfo.NextEventID
+			require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
 
-	info := st.ExecutionInfo
-	err = e.base.UpdateWorkflowExecution(ctx, info, &persistence.ExecutionStats{}, st.VersionHistories, nil, nil, info.NextEventID, nil, nil, nil, nil, nil)
-	t.Logf("UpdateWorkflowExecution on moved run: %T %v", err, err)
-	require.Error(t, err)
-	var cond *persistence.ConditionFailedError
-	var notExists *types.EntityNotExistsError
-	assert.True(t, errors.As(err, &cond) || errors.As(err, &notExists),
-		"want ConditionFailed/NotExists so callers stop retrying, got %T", err)
+			st.ExecutionInfo.AutoResetPoints = &types.ResetPoints{} // what a state loaded from the slim row writes back
+			require.NoError(t, write(e, st))
 
-	err = e.base.ConflictResolveWorkflowExecution(ctx, info, &persistence.ExecutionStats{}, info.NextEventID, nil, nil, nil, nil, nil, nil, st.VersionHistories)
-	t.Logf("ConflictResolve on moved run: %T %v", err, err)
-	require.Error(t, err)
+			got, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
+			require.NoError(t, err)
+			assert.Equal(t, next+1, got.ExecutionInfo.NextEventID, "the write is not lost")
+			assert.True(t, got.ExecutionInfo.AutoResetPointsDropped, "the restored run has no reset points and its slim row, so Describe rebuilds them")
+		})
+	}
 }
 
 // freshManager builds a new decorated manager over the same DB, i.e. a restarted process.
@@ -191,4 +206,55 @@ func TestAdversarial_FlagOffAfterMoveKeepsReadsAndDeletes(t *testing.T) {
 	require.NoError(t, mgr.DeleteWorkflowExecution(ctx, e.req()))
 	_, err = mgr.GetWorkflowExecution(ctx, e.getReq())
 	assert.IsType(t, &types.EntityNotExistsError{}, err)
+}
+
+// onInsertClosed runs a hook right before the slim row is written, i.e. after the move has read the executions row.
+type onInsertClosed struct {
+	persistence.ClosedExecutionStore
+	hook func()
+}
+
+func (c *onInsertClosed) InsertClosedExecution(ctx context.Context, key persistence.ClosedExecutionKey, data *persistence.DataBlob) error {
+	if key.WorkflowID != "cadence-warm-storage-sentinel" {
+		c.hook()
+	}
+	return c.ClosedExecutionStore.InsertClosedExecution(ctx, key, data)
+}
+
+// TestAdversarial_UpdateBetweenReadAndDeleteIsNotLost (VERIFICATION row 30, A7): a writer that lands between the
+// move's read of the executions row and its delete must keep its update. The delete is conditional on the row it
+// copied, so it fails, the stale slim row is dropped, and the updated executions row stays the truth.
+func TestAdversarial_UpdateBetweenReadAndDeleteIsNotLost(t *testing.T) {
+	e := newWarmEnv(t)
+	ctx := context.Background()
+	e.create(t)
+	e.closeRun(t)
+	st, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
+	require.NoError(t, err)
+	info := st.ExecutionInfo
+	condition := info.NextEventID
+
+	cfg := e.base.PersistenceConfig
+	parser, err := serialization.NewParser(&e.base.DynamicConfiguration)
+	require.NoError(t, err)
+	f := sql.NewFactory(*cfg.DataStores[cfg.DefaultStore].SQL, "", e.base.Logger, parser, &e.base.DynamicConfiguration)
+	exec, err := f.NewExecutionStore()
+	require.NoError(t, err)
+	closed, err := f.NewClosedExecutionStore()
+	require.NoError(t, err)
+	hooked := &onInsertClosed{ClosedExecutionStore: closed, hook: func() {
+		info.NextEventID = condition + 1
+		require.NoError(t, e.base.UpdateWorkflowExecution(ctx, info, st.ExecutionStats, st.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil))
+	}}
+	store := warmstorage.NewExecutionStore(exec, hooked, parser, &e.base.DynamicConfiguration, testlogger.New(t), metrics.NewNoopMetricsClient())
+	mgr := persistence.NewExecutionManagerImpl(store, testlogger.New(t), persistence.NewPayloadSerializer(), &e.base.DynamicConfiguration)
+
+	require.NoError(t, mgr.MoveToClosedExecutions(ctx, e.req()))
+
+	got, err := mgr.GetWorkflowExecution(ctx, e.getReq())
+	require.NoError(t, err)
+	assert.Equal(t, condition+1, got.State.ExecutionInfo.NextEventID, "the update is still there")
+	assert.False(t, got.State.ExecutionInfo.AutoResetPointsDropped, "and it is read from executions, not from a stale slim row")
+	_, err = closed.GetClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: e.domainID, WorkflowID: e.we.WorkflowID, RunID: e.we.RunID})
+	assert.IsType(t, &types.EntityNotExistsError{}, err, "the stale slim row is gone")
 }

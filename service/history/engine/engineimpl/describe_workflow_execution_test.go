@@ -49,7 +49,6 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 		name                  string
 		setupMocks            func(*execution.MockCache, *execution.MockContext, *execution.MockMutableState, *shard.MockContext, string)
 		enableCorruptionCheck bool
-		warmStorage           bool
 		expectError           bool
 		errorContains         string
 	}{
@@ -74,7 +73,7 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 					TaskList:                    "test-task-list",
 					WorkflowTimeout:             1800,
 					DecisionStartToCloseTimeout: 30,
-				})
+				}).AnyTimes()
 				mockMutableState.EXPECT().GetStartEvent(gomock.Any()).Return(&types.HistoryEvent{
 					WorkflowExecutionStartedEventAttributes: &types.WorkflowExecutionStartedEventAttributes{
 						FirstDecisionTaskBackoffSeconds: common.Int32Ptr(5),
@@ -101,7 +100,7 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 				mockMutableState.EXPECT().GetExecutionInfo().Return(&persistence.WorkflowExecutionInfo{
 					State:       persistence.WorkflowStateCompleted,
 					CloseStatus: persistence.WorkflowCloseStatusCompleted,
-				})
+				}).AnyTimes()
 				mockMutableState.EXPECT().GetStartEvent(gomock.Any()).Return(&types.HistoryEvent{
 					WorkflowExecutionStartedEventAttributes: &types.WorkflowExecutionStartedEventAttributes{},
 				}, nil)
@@ -111,11 +110,10 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 				mockMutableState.EXPECT().GetPendingChildExecutionInfos().Return(nil)
 				mockMutableState.EXPECT().GetPendingDecision().Return(nil, false)
 			},
-			warmStorage: false,
 			expectError: false,
 		},
 		{
-			name: "Warm storage on - closed run read from the slim row (empty reset points) triggers the rebuild",
+			name: "Closed run read from the slim row (reset points dropped) triggers the rebuild",
 			setupMocks: func(mockExecutionCache *execution.MockCache, mockContext *execution.MockContext, mockMutableState *execution.MockMutableState, mockShard *shard.MockContext, domainUUID string) {
 				wfExecution := types.WorkflowExecution{WorkflowID: "test-wf", RunID: "test-run"}
 				mockExecutionCache.EXPECT().GetOrCreateWorkflowExecution(gomock.Any(), domainUUID, wfExecution).Return(mockContext, func(error) {}, nil)
@@ -124,10 +122,11 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 					&persistence.DomainInfo{Name: "test-domain-name"}, &persistence.DomainConfig{}, "test-cluster")).Times(2)
 				mockShard.EXPECT().GetDomainCache().Return(cache.NewMockDomainCache(gomock.NewController(t)))
 				mockMutableState.EXPECT().GetExecutionInfo().Return(&persistence.WorkflowExecutionInfo{
-					State:           persistence.WorkflowStateCompleted,
-					CloseStatus:     persistence.WorkflowCloseStatusCompleted,
-					AutoResetPoints: &types.ResetPoints{}, // what the serializer returns for the dropped field
-				})
+					State:                  persistence.WorkflowStateCompleted,
+					CloseStatus:            persistence.WorkflowCloseStatusCompleted,
+					AutoResetPoints:        &types.ResetPoints{}, // what the serializer returns for the dropped field
+					AutoResetPointsDropped: true,
+				}).AnyTimes()
 				mockMutableState.EXPECT().GetStartEvent(gomock.Any()).Return(&types.HistoryEvent{
 					WorkflowExecutionStartedEventAttributes: &types.WorkflowExecutionStartedEventAttributes{},
 				}, nil)
@@ -140,7 +139,6 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 				// and Describe still succeeds because the rebuild is best effort
 				mockMutableState.EXPECT().GetVersionHistories().Return(persistence.NewVersionHistories(&persistence.VersionHistory{}))
 			},
-			warmStorage: true,
 		},
 		{
 			name: "Error - execution cache GetOrCreateWorkflowExecution fails",
@@ -210,7 +208,7 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 					WorkflowID:       "test-wf",
 					RunID:            "test-run",
 					WorkflowTypeName: "test-type",
-				})
+				}).AnyTimes()
 			},
 			enableCorruptionCheck: true,
 			expectError:           true,
@@ -266,7 +264,6 @@ func TestDescribeWorkflowExecution(t *testing.T) {
 			cfg.EnableHistoryCorruptionCheck = func(domain string) bool {
 				return tc.enableCorruptionCheck
 			}
-			cfg.EnableWarmStorage = func(string) bool { return tc.warmStorage }
 
 			engine := &historyEngineImpl{
 				executionCache: mockExecutionCache,

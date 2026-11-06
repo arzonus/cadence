@@ -235,6 +235,7 @@ func (m *executionManagerImpl) DeserializeExecutionInfo(
 		CronOverlapPolicy:                  info.CronOverlapPolicy,
 		ExpirationSeconds:                  int32(info.ExpirationInterval.Seconds()),
 		AutoResetPoints:                    autoResetPoints,
+		AutoResetPointsDropped:             info.AutoResetPointsDropped,
 		SearchAttributes:                   info.SearchAttributes,
 		Memo:                               info.Memo,
 		PartitionConfig:                    info.PartitionConfig,

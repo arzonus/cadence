@@ -46,7 +46,8 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 	resp, err := mgr.GetWorkflowExecution(ctx, getReq)
 	require.NoError(t, err, "Warm run must be readable")
 	got := resp.State.ExecutionInfo
-	assert.Empty(t, got.AutoResetPoints.Points, "read came from the slim row")
+	assert.True(t, got.AutoResetPointsDropped, "read came from the slim row")
+	assert.Empty(t, got.AutoResetPoints.Points)
 	assert.Equal(t, int64(3), got.NextEventID)
 	assert.Equal(t, persistence.WorkflowStateCompleted, got.State)
 	assert.Equal(t, persistence.WorkflowCloseStatusCompleted, got.CloseStatus)
@@ -60,7 +61,48 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 	}
 
 	require.NoError(t, mgr.MoveToClosedExecutions(ctx, req), "second delivery of the close task is a no-op")
+
+	// a late write to the moved run (replication backfill, refresh, a child start finding its closed child) puts
+	// the row back and lands, instead of failing on the missing row
+	condition := info.NextEventID
+	info.NextEventID++
+	require.NoError(t, s.UpdateWorkflowExecution(ctx, info, state.ExecutionStats, state.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil))
+	resp, err = mgr.GetWorkflowExecution(ctx, getReq)
+	require.NoError(t, err)
+	assert.Equal(t, condition+1, resp.State.ExecutionInfo.NextEventID, "the late write is not lost")
+	assert.False(t, resp.State.ExecutionInfo.AutoResetPointsDropped, "and the run is read from executions again")
+
 	require.NoError(t, mgr.DeleteWorkflowExecution(ctx, req))
 	_, err = mgr.GetWorkflowExecution(ctx, getReq)
 	assert.IsType(t, &types.EntityNotExistsError{}, err, "retention removes both rows")
+
+	checkConditionalDelete(t, s, mgr)
+}
+
+// checkConditionalDelete covers the guard the move relies on: a delete with NextEventID set removes the executions
+// row only if the row is still at that next event ID.
+func checkConditionalDelete(t *testing.T, s *TestBase, mgr persistence.ExecutionManager) {
+	ctx := t.Context()
+	domainID := uuid.New()
+	execution := types.WorkflowExecution{WorkflowID: "conditional-delete-wf", RunID: uuid.New()}
+	_, err := s.CreateWorkflowExecution(ctx, domainID, execution, "tl", "wType", 20, 13, nil, 3, 0, 2, nil, nil)
+	require.NoError(t, err)
+	state, err := s.GetWorkflowExecutionInfo(ctx, domainID, execution)
+	require.NoError(t, err)
+	next := state.ExecutionInfo.NextEventID
+
+	req := func(nextEventID int64) *persistence.DeleteWorkflowExecutionRequest {
+		return &persistence.DeleteWorkflowExecutionRequest{DomainID: domainID, WorkflowID: execution.WorkflowID, RunID: execution.RunID, ShardID: common.IntPtr(s.ShardInfo.ShardID), NextEventID: &nextEventID}
+	}
+	getReq := &persistence.GetWorkflowExecutionRequest{DomainID: domainID, Execution: execution, ShardID: common.IntPtr(s.ShardInfo.ShardID), RangeID: s.ShardInfo.RangeID}
+
+	assert.IsType(t, &persistence.ConditionFailedError{}, mgr.DeleteWorkflowExecution(ctx, req(next+1)), "the row moved on since it was read")
+	_, err = mgr.GetWorkflowExecution(ctx, getReq)
+	require.NoError(t, err, "a failed conditional delete leaves the row")
+
+	require.NoError(t, mgr.DeleteWorkflowExecution(ctx, req(next)))
+	_, err = mgr.GetWorkflowExecution(ctx, getReq)
+	assert.IsType(t, &types.EntityNotExistsError{}, err)
+
+	assert.IsType(t, &types.EntityNotExistsError{}, mgr.DeleteWorkflowExecution(ctx, req(next)), "the row is gone")
 }

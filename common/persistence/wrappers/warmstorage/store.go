@@ -7,9 +7,10 @@
 //
 // Opt-in: system.enableWarmStorage (per domain ID, default off) gates the move. Reads keep falling back after
 // the flag is turned off, as long as this cluster has ever moved a run: a sentinel row records that, so Warm
-// rows stay readable until retention deletes them. A cluster that never enabled the flag issues no extra
-// queries besides a sentinel read at startup and at most one a minute after a missed read or a delete, and
-// doesn't need the closed_executions table at all.
+// rows stay readable until retention deletes them. A cluster that never enabled the flag does nothing at
+// startup and doesn't need the closed_executions table at all. Its only extra cost is one sentinel read per
+// missed read or delete (at most one a minute while the table can't be read), which is also how a host whose
+// flag lags learns that another host has moved runs.
 package warmstorage
 
 import (
@@ -36,12 +37,9 @@ var sentinelKey = persistence.ClosedExecutionKey{
 	RunID:      "00000000-0000-0000-0000-000000000000",
 }
 
-const (
-	sentinelProbeTimeout = 5 * time.Second
-	// how often a host re-reads the sentinel, so one that started before the cluster's first move, or whose
-	// startup probe failed, still learns that Warm rows exist
-	sentinelReprobeInterval = time.Minute
-)
+// sentinelRetryInterval is how long a host leaves the sentinel alone after a read of it failed, most likely
+// because the table doesn't exist.
+const sentinelRetryInterval = time.Minute
 
 type store struct {
 	persistence.ExecutionStore
@@ -55,7 +53,7 @@ type store struct {
 	// inUse turns the read fallback on for every domain; it never goes back to false in a process
 	inUse           atomic.Bool
 	sentinelWritten atomic.Bool
-	probedAt        atomic.Int64 // unix nanos of the last sentinel probe
+	probeFailedAt   atomic.Int64 // unix nanos of the last failed sentinel read, 0 if none
 }
 
 // NewExecutionStore wraps an execution store with warm storage.
@@ -70,7 +68,7 @@ func NewExecutionStore(
 	if metricsClient == nil {
 		metricsClient = metrics.NewNoopMetricsClient()
 	}
-	s := &store{
+	return &store{
 		ExecutionStore: execution,
 		closed:         closed,
 		parser:         parser,
@@ -79,10 +77,6 @@ func NewExecutionStore(
 		logger:         logger,
 		metrics:        metricsClient,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sentinelProbeTimeout)
-	defer cancel()
-	s.probeSentinel(ctx)
-	return s
 }
 
 func (s *store) GetWorkflowExecution(
@@ -90,6 +84,10 @@ func (s *store) GetWorkflowExecution(
 	request *persistence.InternalGetWorkflowExecutionRequest,
 ) (*persistence.InternalGetWorkflowExecutionResponse, error) {
 	resp, err := s.ExecutionStore.GetWorkflowExecution(ctx, request)
+	if err == nil {
+		s.markRestoredRun(ctx, request, resp)
+		return resp, err
+	}
 	if !isNotExists(err) || !s.fallbackOn(ctx, request.DomainID) {
 		return resp, err
 	}
@@ -107,6 +105,24 @@ func (s *store) GetWorkflowExecution(
 	}
 	s.metrics.IncCounter(metrics.PersistenceGetWorkflowExecutionScope, metrics.WarmStorageFallbackHits)
 	return &persistence.InternalGetWorkflowExecutionResponse{State: state}, nil
+}
+
+// markRestoredRun flags a closed run that has no reset points but still has its slim row: it was put back by a
+// rehydrate, which loses the points, so Describe has to rebuild them. The slim row is only read for closed runs
+// with empty points, which is rare.
+func (s *store) markRestoredRun(ctx context.Context, request *persistence.InternalGetWorkflowExecutionRequest, resp *persistence.InternalGetWorkflowExecutionResponse) {
+	info := resp.State.ExecutionInfo
+	if info.State != persistence.WorkflowStateCompleted {
+		return
+	}
+	// every manager write stores an empty list as a non-empty blob, so look at the decoded points
+	if points, err := s.serializer.DeserializeResetPoints(info.AutoResetPoints); err != nil || len(points.Points) > 0 || !s.fallbackOn(ctx, request.DomainID) {
+		return
+	}
+	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.Execution.WorkflowID, RunID: request.Execution.RunID}
+	if _, err := s.closed.GetClosedExecution(ctx, key); err == nil {
+		info.AutoResetPointsDropped = true
+	}
 }
 
 func (s *store) IsWorkflowExecutionExists(
@@ -132,6 +148,114 @@ func (s *store) DeleteWorkflowExecution(ctx context.Context, request *persistenc
 		return err
 	}
 	return s.closed.DeleteClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID})
+}
+
+// UpdateWorkflowExecution puts a Warm run back into executions when the update targets one, then retries once.
+// Writers do reach closed runs: replication backfill, conflict resolution, refresh, and a child start that finds
+// its child already closed all write to the run. Without the row they fail on a missing row.
+func (s *store) UpdateWorkflowExecution(ctx context.Context, request *persistence.InternalUpdateWorkflowExecutionRequest) error {
+	err := s.ExecutionStore.UpdateWorkflowExecution(ctx, request)
+	if !isMissingRow(err) {
+		return err
+	}
+	restored, restoreErr := s.restoreMovedRuns(ctx, request.ShardID, request.RangeID, request.CurrentTimeStamp, request.UpdateWorkflowMutation.ExecutionInfo)
+	if restoreErr != nil || !restored {
+		return firstError(restoreErr, err)
+	}
+	return s.ExecutionStore.UpdateWorkflowExecution(ctx, request)
+}
+
+// ConflictResolveWorkflowExecution does the same for the run being reset and the current run it updates.
+func (s *store) ConflictResolveWorkflowExecution(ctx context.Context, request *persistence.InternalConflictResolveWorkflowExecutionRequest) error {
+	err := s.ExecutionStore.ConflictResolveWorkflowExecution(ctx, request)
+	if !isMissingRow(err) {
+		return err
+	}
+	infos := []*persistence.InternalWorkflowExecutionInfo{request.ResetWorkflowSnapshot.ExecutionInfo}
+	if request.CurrentWorkflowMutation != nil {
+		infos = append(infos, request.CurrentWorkflowMutation.ExecutionInfo)
+	}
+	restored, restoreErr := s.restoreMovedRuns(ctx, request.ShardID, request.RangeID, request.CurrentTimeStamp, infos...)
+	if restoreErr != nil || !restored {
+		return firstError(restoreErr, err)
+	}
+	return s.ExecutionStore.ConflictResolveWorkflowExecution(ctx, request)
+}
+
+// restoreMovedRuns writes the executions row back for each run that has a slim row and no executions row.
+// The slim row stays: reads prefer executions, and retention deletes both. A run that is restored stays in
+// executions until retention, and its auto-reset points are gone for good (Describe only rebuilds them for
+// rows read from closed_executions).
+func (s *store) restoreMovedRuns(
+	ctx context.Context,
+	shardID persistence.ShardID,
+	rangeID int64,
+	now time.Time,
+	infos ...*persistence.InternalWorkflowExecutionInfo,
+) (restored bool, err error) {
+	for _, info := range infos {
+		if !s.fallbackOn(ctx, info.DomainID) {
+			continue
+		}
+		key := persistence.ClosedExecutionKey{DomainID: info.DomainID, WorkflowID: info.WorkflowID, RunID: info.RunID}
+		blob, err := s.closed.GetClosedExecution(ctx, key)
+		if isNotExists(err) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		execution := types.WorkflowExecution{WorkflowID: key.WorkflowID, RunID: key.RunID}
+		if _, err := s.ExecutionStore.GetWorkflowExecution(ctx, &persistence.InternalGetWorkflowExecutionRequest{ShardID: shardID, DomainID: key.DomainID, Execution: execution}); err == nil {
+			continue // the row is there, so the failure was a real condition failure
+		} else if !isNotExists(err) {
+			return false, err
+		}
+		state, err := fromBlob(s.parser, s.serializer, key, blob)
+		if err != nil {
+			return false, err
+		}
+		startVersion, lastWriteVersion, err := versionRange(s.serializer, state)
+		if err != nil {
+			return false, err
+		}
+		_, err = s.ExecutionStore.CreateWorkflowExecution(ctx, &persistence.InternalCreateWorkflowExecutionRequest{
+			ShardID: shardID,
+			RangeID: rangeID,
+			Mode:    persistence.CreateWorkflowModeZombie, // writes the row and leaves current_executions alone
+			NewWorkflowSnapshot: persistence.InternalWorkflowSnapshot{
+				ExecutionInfo:    state.ExecutionInfo,
+				VersionHistories: state.VersionHistories,
+				StartVersion:     startVersion,
+				LastWriteVersion: lastWriteVersion,
+				RestoreClosedRun: true,
+			},
+			CurrentTimeStamp: now,
+		})
+		var alreadyThere *persistence.WorkflowExecutionAlreadyStartedError
+		if err != nil && !errors.As(err, &alreadyThere) { // already there: another writer restored it first
+			return false, err
+		}
+		s.metrics.IncCounter(metrics.PersistenceUpdateWorkflowExecutionScope, metrics.WarmStorageRehydrates)
+		restored = true
+	}
+	return restored, nil
+}
+
+// isMissingRow reports what the stores return for a write whose row is gone: SQL says not found, Cassandra
+// fails the next-event-ID condition.
+func isMissingRow(err error) bool {
+	var conditionFailed *persistence.ConditionFailedError
+	return isNotExists(err) || errors.As(err, &conditionFailed)
+}
+
+func firstError(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MoveToClosedExecutions fails open: any problem leaves the run in executions, exactly as without warm storage,
@@ -171,7 +295,22 @@ func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence
 	if err := s.closed.InsertClosedExecution(ctx, key, blob); err != nil {
 		return s.moveFailed(request, err)
 	}
-	if err := s.ExecutionStore.DeleteWorkflowExecution(ctx, request); err != nil {
+	// delete only the row that was copied: a writer that got in since the read (another host, after a shard move)
+	// has made the executions row the truth, and the slim row is stale
+	del := *request
+	del.NextEventID = &resp.State.ExecutionInfo.NextEventID
+	err = s.ExecutionStore.DeleteWorkflowExecution(ctx, &del)
+	var conditionFailed *persistence.ConditionFailedError
+	switch {
+	case isNotExists(err):
+		return nil // moved or deleted by someone else in the meantime
+	case errors.As(err, &conditionFailed):
+		s.metrics.IncCounter(metrics.PersistenceMoveToClosedExecutionsScope, metrics.WarmStorageMoveConflicts)
+		if err := s.closed.DeleteClosedExecution(ctx, key); err != nil {
+			return s.moveFailed(request, err)
+		}
+		return nil
+	case err != nil:
 		return s.moveFailed(request, err)
 	}
 	s.metrics.IncCounter(metrics.PersistenceMoveToClosedExecutionsScope, metrics.WarmStorageMoves)
@@ -194,19 +333,24 @@ func (s *store) fallbackOn(ctx context.Context, domainID string) bool {
 	return s.inUse.Load()
 }
 
-// probeSentinel runs at most once per sentinelReprobeInterval, so a cluster that never enabled warm storage
-// pays at most one closed_executions read per host per minute, and only after a missed read or a delete.
+// probeSentinel reads the sentinel on every call while it isn't known to exist, so a delete never skips the
+// closed row because another host has moved runs this one hasn't heard of. A failed read (most likely no table)
+// isn't repeated for sentinelRetryInterval.
 func (s *store) probeSentinel(ctx context.Context) {
-	last := s.probedAt.Load()
-	now := time.Now().UnixNano()
-	if last != 0 && now-last < int64(sentinelReprobeInterval) || !s.probedAt.CompareAndSwap(last, now) {
+	if failed := s.probeFailedAt.Load(); failed != 0 && time.Since(time.Unix(0, failed)) < sentinelRetryInterval {
 		return
 	}
-	if _, err := s.closed.GetClosedExecution(ctx, sentinelKey); err == nil {
+	_, err := s.closed.GetClosedExecution(ctx, sentinelKey)
+	switch {
+	case err == nil:
+		s.probeFailedAt.Store(0)
 		s.inUse.Store(true)
 		s.sentinelWritten.Store(true)
-	} else if !isNotExists(err) {
+	case isNotExists(err):
+		s.probeFailedAt.Store(0)
+	default:
 		// most likely the table isn't there: fine until someone turns the flag on
+		s.probeFailedAt.Store(time.Now().UnixNano())
 		s.logger.Info("warm storage is unavailable, closed_executions can't be read", tag.Error(err))
 	}
 }

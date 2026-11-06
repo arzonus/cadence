@@ -26,7 +26,7 @@ import "github.com/uber/cadence/schema/common"
 
 // Version is the Postgres database release version
 // Cadence supports both MySQL and Postgres officially, so upgrade should be perform for both MySQL and Postgres
-const Version = "0.8"
+const Version = "0.9"
 
 // VisibilityVersion is the Postgres visibility database release version
 // Cadence supports both MySQL and Postgres officially, so upgrade should be perform for both MySQL and Postgres

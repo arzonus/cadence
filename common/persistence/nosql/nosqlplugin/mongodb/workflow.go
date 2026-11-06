@@ -73,6 +73,10 @@ func (db *mdb) DeleteWorkflowExecution(ctx context.Context, shardID int, domainI
 	panic("TODO")
 }
 
+func (db *mdb) DeleteWorkflowExecutionIfNextEventID(ctx context.Context, shardID int, domainID, workflowID, runID string, nextEventID int64) error {
+	panic("TODO")
+}
+
 func (db *mdb) SelectAllCurrentWorkflows(ctx context.Context, shardID int, pageToken []byte, pageSize int) ([]*persistence.CurrentWorkflowExecution, []byte, error) {
 	panic("TODO")
 }

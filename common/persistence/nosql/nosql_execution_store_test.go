@@ -599,6 +599,46 @@ func TestNosqlExecutionStore(t *testing.T) {
 			expectedError: &types.EntityNotExistsError{Message: "workflow does not exist"},
 		},
 		{
+			name: "DeleteWorkflowExecution conditional - next event ID changed",
+			setupMock: func(ctrl *gomock.Controller) *nosqlExecutionStore {
+				mockDB := nosqlplugin.NewMockDB(ctrl)
+				mockDB.EXPECT().
+					DeleteWorkflowExecutionIfNextEventID(ctx, shardID, "domainID", "workflowID", "runID", int64(7)).
+					Return(&nosqlplugin.WorkflowOperationConditionFailure{UnknownConditionFailureDetails: common.StringPtr("changed")})
+				return newTestNosqlExecutionStore(mockDB, log.NewNoop())
+			},
+			testFunc: func(store *nosqlExecutionStore) error {
+				return store.DeleteWorkflowExecution(ctx, &persistence.DeleteWorkflowExecutionRequest{
+					ShardID:     common.IntPtr(testExecutionShardID),
+					DomainID:    "domainID",
+					WorkflowID:  "workflowID",
+					RunID:       "runID",
+					NextEventID: common.Ptr(int64(7)),
+				})
+			},
+			expectedError: &persistence.ConditionFailedError{Msg: (&nosqlplugin.WorkflowOperationConditionFailure{UnknownConditionFailureDetails: common.StringPtr("changed")}).Error()},
+		},
+		{
+			name: "DeleteWorkflowExecution conditional - row is gone",
+			setupMock: func(ctrl *gomock.Controller) *nosqlExecutionStore {
+				mockDB := nosqlplugin.NewMockDB(ctrl)
+				mockDB.EXPECT().
+					DeleteWorkflowExecutionIfNextEventID(ctx, shardID, "domainID", "workflowID", "runID", int64(7)).
+					Return(&types.EntityNotExistsError{Message: "gone"})
+				return newTestNosqlExecutionStore(mockDB, log.NewNoop())
+			},
+			testFunc: func(store *nosqlExecutionStore) error {
+				return store.DeleteWorkflowExecution(ctx, &persistence.DeleteWorkflowExecutionRequest{
+					ShardID:     common.IntPtr(testExecutionShardID),
+					DomainID:    "domainID",
+					WorkflowID:  "workflowID",
+					RunID:       "runID",
+					NextEventID: common.Ptr(int64(7)),
+				})
+			},
+			expectedError: &types.EntityNotExistsError{Message: "gone"},
+		},
+		{
 			name: "DeleteCurrentWorkflowExecution success",
 			setupMock: func(ctrl *gomock.Controller) *nosqlExecutionStore {
 				mockDB := nosqlplugin.NewMockDB(ctrl)

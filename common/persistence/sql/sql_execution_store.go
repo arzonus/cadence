@@ -213,8 +213,12 @@ func (m *sqlExecutionStore) createWorkflowExecutionTx(
 			}
 
 		case p.CreateWorkflowModeZombie:
-			// zombie workflow creation with existence of current record, this is a noop
-			if err := assertRunIDMismatch(serialization.MustParseUUID(executionInfo.RunID), row.RunID); err != nil {
+			// zombie workflow creation with existence of current record, this is a noop.
+			// Warm storage restoring a moved run may restore the current run itself.
+			if newWorkflow.RestoreClosedRun {
+				break
+			}
+			if err := assertRunIDMismatch(runID, row.RunID); err != nil {
 				return nil, err
 			}
 
@@ -685,6 +689,11 @@ func (m *sqlExecutionStore) DeleteWorkflowExecution(
 	runID := serialization.MustParseUUID(request.RunID)
 	wfID := request.WorkflowID
 	return m.txExecute(ctx, dbShardID, "DeleteWorkflowExecution", func(tx sqlplugin.Tx) error {
+		if request.NextEventID != nil {
+			if err := lockAndCheckNextEventID(ctx, tx, shardID, domainID, wfID, runID, *request.NextEventID); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.DeleteFromExecutions(ctx, &sqlplugin.ExecutionsFilter{
 			ShardID:    shardID,
 			DomainID:   domainID,

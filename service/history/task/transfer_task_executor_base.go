@@ -95,6 +95,31 @@ func newTransferTaskExecutorBase(
 	}
 }
 
+// moveToClosedExecutions swaps a closed run's executions row for its slim closed_executions row (warm storage).
+// It holds the workflow lock like every writer of the run does (retention, replication, refresh), so none of them
+// can run between the move's read of the row and its delete of it. The caller checks the flag.
+func (t *transferTaskExecutorBase) moveToClosedExecutions(ctx context.Context, task persistence.Task) (retError error) {
+	_, release, err := t.executionCache.GetOrCreateWorkflowExecutionWithTimeout(
+		task.GetDomainID(),
+		getWorkflowExecution(task),
+		taskGetExecutionContextTimeout,
+	)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			return errWorkflowBusy
+		}
+		return err
+	}
+	defer func() { release(retError) }()
+
+	return t.shard.GetExecutionManager().MoveToClosedExecutions(ctx, &persistence.DeleteWorkflowExecutionRequest{
+		DomainID:   task.GetDomainID(),
+		WorkflowID: task.GetWorkflowID(),
+		RunID:      task.GetRunID(),
+		ShardID:    common.Ptr(t.shard.GetShardID()),
+	})
+}
+
 func (t *transferTaskExecutorBase) pushActivity(
 	ctx context.Context,
 	task *persistence.ActivityTask,

@@ -58,7 +58,7 @@ func ValidateCreateWorkflowModeState(
 	case CreateWorkflowModeZombie:
 		if workflowState == WorkflowStateCreated ||
 			workflowState == WorkflowStateRunning ||
-			workflowState == WorkflowStateCompleted {
+			(workflowState == WorkflowStateCompleted && !newWorkflowSnapshot.RestoreClosedRun) {
 			return newInvalidCreateWorkflowMode(
 				mode,
 				workflowState,

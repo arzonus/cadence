@@ -50,6 +50,7 @@ var (
 func ValidateCreateWorkflowStateCloseStatus(
 	state int,
 	closeStatus int,
+	restoreClosedRun bool,
 ) error {
 
 	if err := validateWorkflowState(state); err != nil {
@@ -60,7 +61,12 @@ func ValidateCreateWorkflowStateCloseStatus(
 	}
 
 	// validate workflow state & close status
-	if state == WorkflowStateCompleted || closeStatus != WorkflowCloseStatusNone {
+	invalid := state == WorkflowStateCompleted || closeStatus != WorkflowCloseStatusNone
+	if restoreClosedRun {
+		// a closed run being put back: completed with a close status, nothing else
+		invalid = (state == WorkflowStateCompleted) == (closeStatus == WorkflowCloseStatusNone)
+	}
+	if invalid {
 		return &types.InternalServiceError{
 			Message: fmt.Sprintf("Create workflow with invalid state: %v or close status: %v",
 				state, closeStatus),

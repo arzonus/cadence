@@ -22,6 +22,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/uber/cadence/client/matching"
+	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/activecluster"
 	"github.com/uber/cadence/common/cache"
 	"github.com/uber/cadence/common/clock"
@@ -39,6 +41,7 @@ import (
 	"github.com/uber/cadence/common/types"
 	"github.com/uber/cadence/service/history/config"
 	"github.com/uber/cadence/service/history/constants"
+	"github.com/uber/cadence/service/history/execution"
 	"github.com/uber/cadence/service/history/shard"
 )
 
@@ -248,6 +251,58 @@ func TestPushDecision(t *testing.T) {
 				assert.Equal(t, tc.task, writer.calls[0].Task)
 			} else {
 				assert.Empty(t, writer.calls)
+			}
+		})
+	}
+}
+
+func TestMoveToClosedExecutions_HoldsTheWorkflowLock(t *testing.T) {
+	task := &persistence.CloseExecutionTask{WorkflowIdentifier: persistence.WorkflowIdentifier{DomainID: "d", WorkflowID: "w", RunID: "r"}}
+	wantRequest := &persistence.DeleteWorkflowExecutionRequest{DomainID: "d", WorkflowID: "w", RunID: "r", ShardID: common.Ptr(7)}
+	wantExecution := types.WorkflowExecution{WorkflowID: "w", RunID: "r"}
+	errMove := errors.New("move failed")
+	errCache := errors.New("cache")
+
+	tests := map[string]struct {
+		cacheErr error
+		moveErr  error
+		wantErr  error
+		wantMove bool
+	}{
+		"moves while the lock is held":     {wantMove: true},
+		"move error is returned":           {moveErr: errMove, wantErr: errMove, wantMove: true},
+		"busy run: no move, task redriven": {cacheErr: context.DeadlineExceeded, wantErr: errWorkflowBusy},
+		"cache error: no move":             {cacheErr: errCache, wantErr: errCache},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			executionCache := execution.NewMockCache(ctrl)
+			mockShard := shard.NewMockContext(ctrl)
+			executionMgr := persistence.NewMockExecutionManager(ctrl)
+			mockShard.EXPECT().GetExecutionManager().Return(executionMgr).AnyTimes()
+			mockShard.EXPECT().GetShardID().Return(7).AnyTimes()
+
+			var order []string
+			executionCache.EXPECT().GetOrCreateWorkflowExecutionWithTimeout("d", wantExecution, taskGetExecutionContextTimeout).
+				DoAndReturn(func(string, types.WorkflowExecution, time.Duration) (execution.Context, execution.ReleaseFunc, error) {
+					if tc.cacheErr != nil {
+						return nil, nil, tc.cacheErr
+					}
+					order = append(order, "lock")
+					return nil, func(error) { order = append(order, "unlock") }, nil
+				})
+			if tc.wantMove {
+				executionMgr.EXPECT().MoveToClosedExecutions(gomock.Any(), wantRequest).DoAndReturn(func(context.Context, *persistence.DeleteWorkflowExecutionRequest) error {
+					order = append(order, "move")
+					return tc.moveErr
+				})
+			}
+
+			base := &transferTaskExecutorBase{shard: mockShard, executionCache: executionCache}
+			assert.Equal(t, tc.wantErr, base.moveToClosedExecutions(context.Background(), task))
+			if tc.wantMove {
+				assert.Equal(t, []string{"lock", "move", "unlock"}, order)
 			}
 		})
 	}

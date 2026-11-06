@@ -42,7 +42,6 @@ import (
 	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/service"
-	"github.com/uber/cadence/common/types"
 )
 
 /*
@@ -99,27 +98,14 @@ func TestFactoryMethods(t *testing.T) {
 		ds.EXPECT().NewDomainStore().Return(nil, nil).MinTimes(1)
 		check(t, fact.NewDomainManager)
 	})
-	t.Run("NewExecutionManager", func(t *testing.T) {
+	t.Run("NewExecutionManager wires warm storage without connecting for it", func(t *testing.T) {
 		fact := makeFactoryWithMetrics(t, false)
 		ds := mockDatastore(t, fact, storeTypeExecution)
 
-		ds.EXPECT().NewExecutionStore().Return(nil, nil).MinTimes(1)
-		ds.EXPECT().NewClosedExecutionStore().Return(nil, errors.New("not supported"))
-		em, err := fact.NewExecutionManager()
-		assert.NoError(t, err)
-		assert.NotNil(t, em)
-	})
-	t.Run("NewExecutionManager with warm storage", func(t *testing.T) {
-		fact := makeFactoryWithMetrics(t, false)
-		ds := mockDatastore(t, fact, storeTypeExecution)
-		ctrl := gomock.NewController(t)
-		closed := persistence.NewMockClosedExecutionStore(ctrl)
-		execution := persistence.NewMockExecutionStore(ctrl)
-
+		execution := persistence.NewMockExecutionStore(gomock.NewController(t))
 		ds.EXPECT().NewExecutionStore().Return(execution, nil)
 		execution.EXPECT().GetName().Return("cassandra").AnyTimes()
-		ds.EXPECT().NewClosedExecutionStore().Return(closed, nil)
-		closed.EXPECT().GetClosedExecution(gomock.Any(), gomock.Any()).Return(nil, &types.EntityNotExistsError{}) // startup probe
+		// no NewClosedExecutionStore expectation: it is only opened on the first fallback or move
 		em, err := fact.NewExecutionManager()
 		assert.NoError(t, err)
 		assert.NotNil(t, em)
