@@ -10,10 +10,10 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 
 	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/config"
-	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/persistence/client"
@@ -22,7 +22,7 @@ import (
 )
 
 // The warm storage tests are methods of IntegrationSuite but only run through
-// TestWarmStorageIntegrationSuite, which turns the flag on through a temp dynamic config file
+// TestWarmStorageIntegrationSuite, which turns the mode on through a temp dynamic config file
 // and opens a raw Cassandra session. In the regular IntegrationSuite they skip.
 var (
 	warmDCPath  string
@@ -73,15 +73,23 @@ var warmClusterCfg *gocql.ClusterConfig
 
 var warmBaseDC string
 
+func warmModeOf(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
 func setWarmFlag(t *testing.T, base string, on bool) {
+	setWarmMode(t, base, warmModeOf(on))
+}
+
+func setWarmMode(t *testing.T, base string, mode string) {
 	if base != "" {
 		warmBaseDC = base
 	}
-	v := "false"
-	if on {
-		v = "true"
-	}
-	content := warmBaseDC + "\nsystem.enableWarmStorage:\n- value: " + v + "\n  constraints: {}\n"
+	// quoted: a bare on is a YAML boolean
+	content := warmBaseDC + "\nsystem.warmStorageMode:\n- value: \"" + mode + "\"\n  constraints: {}\n"
 	if err := os.WriteFile(warmDCPath, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -322,12 +330,17 @@ func (s *IntegrationSuite) warmLateWrites(id, run string) (sigErr, termErr error
 }
 
 func (s *IntegrationSuite) warmExecMgr() persistence.ExecutionManager {
+	return s.warmExecMgrMode("on", metrics.NewNoopMetricsClient())
+}
+
+// warmExecMgrMode is an execution manager of the test's own, in the given mode, so its metrics can be read.
+func (s *IntegrationSuite) warmExecMgrMode(mode string, metricsClient metrics.Client) persistence.ExecutionManager {
 	dc := s.TestCluster.testBase.DynamicConfiguration
-	dc.EnableWarmStorage = dynamicproperties.GetBoolPropertyFnFilteredByDomainID(true)
+	dc.WarmStorageMode = func(string) string { return mode }
 	pConfig := s.PersistenceConfig
 	mgr, err := client.NewFactory(&pConfig, func() float64 { return 1000 },
 		s.TestCluster.testBase.ClusterMetadata.GetCurrentClusterName(),
-		metrics.NewNoopMetricsClient(), s.Logger, &dc).NewExecutionManager()
+		metricsClient, s.Logger, &dc).NewExecutionManager()
 	s.NoError(err)
 	return mgr
 }
@@ -435,15 +448,15 @@ func (s *IntegrationSuite) TestWarmStorage_Chains_SLOW() {
 	}, func(id string) { s.warmDecide(id, "bin-1", failD()) })
 }
 
-// 8: flag flipped off after the move: warm runs stay readable, new closes stay hot.
-func (s *IntegrationSuite) TestWarmStorage_FlagOffAfterMove_SLOW() {
+// 8: mode lowered to read_only after the move: warm runs stay readable, new closes stay hot.
+func (s *IntegrationSuite) TestWarmStorage_ReadOnlyAfterMove_SLOW() {
 	s.warmSkip()
 	id := "warm-flagoff-" + uuid.New()
 	run := s.warmStart(id, nil)
 	s.warmDecide(id, "bin-1", completeD())
 	s.warmWaitMoved(id, run)
 
-	setWarmFlag(s.T(), "", false)
+	setWarmMode(s.T(), "", "read_only")
 	defer setWarmFlag(s.T(), "", true)
 	time.Sleep(8 * time.Second) // dynamic config file poll interval is 5s
 
@@ -459,4 +472,104 @@ func (s *IntegrationSuite) TestWarmStorage_FlagOffAfterMove_SLOW() {
 	warmSig, warmTerm := s.warmLateWrites(id, run)
 	s.IsType(hotSig, warmSig)
 	s.IsType(hotTerm, warmTerm)
+}
+
+// warmWaitBoth waits for a run closed in shadow mode: slim row written, executions row kept.
+func (s *IntegrationSuite) warmWaitBoth(id, runID string) {
+	var hot, warm int
+	for i := 0; i < 60; i++ {
+		if hot, warm = s.warmRows(id, runID); hot == 1 && warm == 1 {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	s.Failf("run has no slim row", "wf %s run %s: executions rows=%d closed_executions rows=%d", id, runID, hot, warm)
+}
+
+// warmEvictCache closes the run's shard so the next read goes to persistence.
+func (s *IntegrationSuite) warmEvictCache(id string) {
+	ctx, cancel := createContext()
+	defer cancel()
+	shard := int32(common.WorkflowIDToHistoryShard(id, s.TestClusterConfig.HistoryConfig.NumHistoryShards))
+	s.NoError(s.HistoryClient.CloseShard(ctx, &types.CloseShardRequest{ShardID: shard}))
+	time.Sleep(time.Second)
+}
+
+// Shadow: closes write the slim row but keep the executions row, reads stay on the hot row, and the slim row
+// matches what the hot row projects to.
+func (s *IntegrationSuite) TestWarmStorage_Shadow_SLOW() {
+	s.warmSkip()
+	setWarmMode(s.T(), "", "shadow")
+	defer func() {
+		setWarmFlag(s.T(), "", true)
+		warmFlagOn = true
+		time.Sleep(7 * time.Second)
+	}()
+	warmFlagOn = false
+	time.Sleep(8 * time.Second) // dynamic config file poll interval is 5s
+
+	var runs [][2]string
+	for i := 0; i < 3; i++ {
+		id := "warm-shadow-" + uuid.New()
+		runs = append(runs, [2]string{id, s.warmSetupDone(id, "bin-1", completeD())})
+	}
+	domainID := s.warmDomainID()
+	scope := tally.NewTestScope("", nil)
+	mgr := s.warmExecMgrMode("shadow", metrics.NewClient(scope, metrics.History, metrics.MigrationConfig{}))
+	defer mgr.Close()
+	ctx, cancel := createContext()
+	defer cancel()
+	for _, r := range runs {
+		s.warmWaitBoth(r[0], r[1])
+		s.warmEvictCache(r[0])
+		s.Equal("COMPLETED", s.warmStatus(r[0], r[1]))
+		s.NotEmpty(s.warmHistory(r[0], r[1]))
+		hot, warm := s.warmRows(r[0], r[1])
+		s.Equal([]int{1, 1}, []int{hot, warm}, "shadow keeps both rows")
+
+		// a fresh read through a shadow manager compares the slim row with the hot row
+		shard := common.IntPtr(common.WorkflowIDToHistoryShard(r[0], s.TestClusterConfig.HistoryConfig.NumHistoryShards))
+		resp, err := mgr.GetWorkflowExecution(ctx, &persistence.GetWorkflowExecutionRequest{
+			ShardID: shard, DomainID: domainID, DomainName: s.DomainName,
+			Execution: types.WorkflowExecution{WorkflowID: r[0], RunID: r[1]}})
+		s.NoError(err)
+		s.Equal(persistence.WorkflowStateCompleted, resp.State.ExecutionInfo.State)
+	}
+	var mismatches int64
+	for _, c := range scope.Snapshot().Counters() {
+		if c.Name() == "warm_storage_shadow_mismatches" {
+			mismatches += c.Value()
+		}
+	}
+	s.Zero(mismatches)
+}
+
+// on, then read_only, then off: a moved run stays readable in read_only and is not found in off.
+func (s *IntegrationSuite) TestWarmStorage_OnReadOnlyOff_SLOW() {
+	s.warmSkip()
+	id := "warm-onroff-" + uuid.New()
+	run := s.warmStart(id, nil)
+	s.warmDecide(id, "bin-1", completeD())
+	s.warmWaitMoved(id, run)
+	defer func() {
+		setWarmFlag(s.T(), "", true)
+		time.Sleep(7 * time.Second)
+	}()
+
+	setWarmMode(s.T(), "", "read_only")
+	time.Sleep(8 * time.Second)
+	s.warmEvictCache(id)
+	s.Equal("COMPLETED", s.warmStatus(id, run))
+	s.NotEmpty(s.warmHistory(id, run))
+
+	setWarmMode(s.T(), "", "off")
+	time.Sleep(8 * time.Second)
+	s.warmEvictCache(id)
+	ctx, cancel := createContext()
+	defer cancel()
+	_, err := s.Engine.DescribeWorkflowExecution(ctx, &types.DescribeWorkflowExecutionRequest{
+		Domain: s.DomainName, Execution: &types.WorkflowExecution{WorkflowID: id, RunID: run}})
+	s.IsType(&types.EntityNotExistsError{}, err)
+	hot, warm := s.warmRows(id, run)
+	s.Equal([]int{0, 1}, []int{hot, warm}, "the slim row is left behind, which is why off comes after read_only")
 }

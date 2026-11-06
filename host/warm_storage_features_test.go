@@ -44,16 +44,25 @@ func (s *IntegrationSuite) warmFlag(on bool) {
 	time.Sleep(7 * time.Second) // dynamic config file poll interval is 5s
 }
 
-// warmFlagDomains writes a per-domain flag: def everywhere, overridden by on[domainID].
+// warmFlagDomains writes a per-domain mode, on or off: def everywhere, overridden by on[domainID].
 func (s *IntegrationSuite) warmFlagDomains(def bool, on map[string]bool) {
-	var b strings.Builder
-	b.WriteString(warmBaseDC + "\nsystem.enableWarmStorage:\n")
+	modes := map[string]string{}
 	for id, v := range on {
-		fmt.Fprintf(&b, "- value: %v\n  constraints:\n    domainID: %q\n", v, id)
+		modes[id] = warmModeOf(v)
 	}
-	fmt.Fprintf(&b, "- value: %v\n  constraints: {}\n", def)
-	s.NoError(os.WriteFile(warmDCPath, []byte(b.String()), 0o644))
+	s.warmModeDomains(warmModeOf(def), modes)
 	warmFlagOn = def
+}
+
+// warmModeDomains writes a per-domain mode: def everywhere, overridden by modes[domainID].
+func (s *IntegrationSuite) warmModeDomains(def string, modes map[string]string) {
+	var b strings.Builder
+	b.WriteString(warmBaseDC + "\nsystem.warmStorageMode:\n")
+	for id, v := range modes {
+		fmt.Fprintf(&b, "- value: %q\n  constraints:\n    domainID: %q\n", v, id)
+	}
+	fmt.Fprintf(&b, "- value: %q\n  constraints: {}\n", def)
+	s.NoError(os.WriteFile(warmDCPath, []byte(b.String()), 0o644))
 	time.Sleep(12 * time.Second)
 }
 
@@ -875,8 +884,8 @@ func (s *IntegrationSuite) TestWarmStorage_PerDomain_SLOW() {
 		})
 	}
 
-	// b. X off: warm runs stay readable, new closes stay hot
-	s.warmFlagDomains(false, nil)
+	// b. X read_only: warm runs stay readable, new closes stay hot
+	s.warmModeDomains("off", map[string]string{xid: "read_only"})
 	readable(x, xid1, xrun1)
 	xid2, xrun2 := closeIn(x)
 	expect(x, xid2, xrun2, 1, 0)
