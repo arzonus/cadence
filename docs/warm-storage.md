@@ -57,8 +57,10 @@ until retention has removed the Warm rows. Nothing needs migrating back.
 ## Known limits
 
 - Runs closed before the flag was turned on are not migrated.
-- A write to a Warm run puts its `executions` row back (the slim row stays until retention). Such a run stays in
-  `executions` until retention. Its auto-reset points are lost with the move, so Describe rebuilds them from history
+- A write to a Warm run puts its `executions` row back (the slim row stays until retention). If the write leads to a
+  new close (for example a replicated branch that closes at a higher version), the close task moves the run again.
+  Otherwise (a lower-version backfill after a failover) it stays in `executions` until retention; reads prefer the hot
+  row and retention deletes both. Its auto-reset points are lost with the move, so Describe rebuilds them from history
   (a closed run with no points and a slim row is treated as Warm). That costs one extra `closed_executions` read when
   such a run is loaded, which only happens for closed runs without points.
 - Split close tasks do not move runs. `RecordWorkflowClosed` has no producer any more, and
