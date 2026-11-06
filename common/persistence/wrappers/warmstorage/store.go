@@ -11,6 +11,7 @@
 //     through read_only and wait out one retention period first.
 //   - shadow: the close task also writes the slim row but keeps the executions row; reads of a closed run
 //     compare the two and count differences. Reads fall back and deletes remove both rows.
+//     Slim rows written in shadow are orphaned the same way if the mode goes straight to off.
 //   - read_only: nothing new moves; reads, deletes and put-back still use closed_executions.
 //   - on: closed runs move.
 package warmstorage
