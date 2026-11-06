@@ -10,8 +10,10 @@ frontend.failoverCoolDown:
   - value: 5s
 history.ReplicationTaskProcessorStartWait: # default is 5s. repl task processor sleeps this much before processing received messages.
   - value: 10ms
-system.enableWarmStorage:
-  - value: true
+# Domain IDs are generated at registration, so a checked-in file can't name them. To mix modes per domain, add
+# entries with constraints: {domainID: <id>} and value "on", "shadow" or "read_only" before this default.
+system.warmStorageMode:
+  - value: "on"
     constraints: {}
 history.standbyClusterDelay:
   - value: 5s

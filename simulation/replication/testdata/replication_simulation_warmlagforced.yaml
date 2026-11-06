@@ -1,6 +1,6 @@
 # Warm storage replication scenario (see research/replication-lag.md).
 # Run: ./simulation/replication/run.sh --scenario warmlagforced
-# The dynamic config config/dynamicconfig/replication_simulation_warmlagforced.yml turns system.enableWarmStorage on in both clusters.
+# The dynamic config config/dynamicconfig/replication_simulation_warmlagforced.yml sets system.warmStorageMode to "on" in both clusters.
 # (c) forced failover to cluster1, issued on cluster1, while it is cut off for 180s. The new active finishes a run the old active already closed and moved.
 
 clusters:

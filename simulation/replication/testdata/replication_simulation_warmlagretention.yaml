@@ -1,6 +1,6 @@
 # Warm storage replication scenario (see research/replication-lag.md).
 # Run: ./simulation/replication/run.sh --scenario warmlagretention
-# The dynamic config config/dynamicconfig/replication_simulation_warmlagretention.yml turns system.enableWarmStorage on in both clusters.
+# The dynamic config config/dynamicconfig/replication_simulation_warmlagretention.yml sets system.warmStorageMode to "on" in both clusters.
 # (d) domain retention is 0 days, so retention deletes closed runs on the active (cluster0) while cluster1 is cut off for 180s.
 
 clusters:

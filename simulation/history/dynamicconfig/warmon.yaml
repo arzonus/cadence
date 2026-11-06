@@ -28,6 +28,6 @@ history.transferProcessorUpdateAckIntervalJitterCoefficient:
 history.transferProcessorMaxPollRPS:
 - value: 20
   constraints: {}
-system.enableWarmStorage:
-- value: true
+system.warmStorageMode:
+- value: "on"
   constraints: {}

@@ -1,6 +1,6 @@
 # Warm storage replication scenario (see research/replication-lag.md).
 # Run: ./simulation/replication/run.sh --scenario warmmixed
-# The dynamic config config/dynamicconfig/replication_simulation_warmmixed.yml turns system.enableWarmStorage on in both clusters.
+# The dynamic config config/dynamicconfig/replication_simulation_warmmixed.yml sets system.warmStorageMode to "on" in both clusters.
 # Graceful failover there and back, with warm storage on in one cluster only (which one is picked by the run's dynamic config override).
 
 clusters:

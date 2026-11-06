@@ -1,6 +1,6 @@
 # Warm storage replication scenario (see research/replication-lag.md).
 # Run: ./simulation/replication/run.sh --scenario warmlag
-# The dynamic config config/dynamicconfig/replication_simulation_warmlag.yml turns system.enableWarmStorage on in both clusters.
+# The dynamic config config/dynamicconfig/replication_simulation_warmlag.yml sets system.warmStorageMode to "on" in both clusters.
 # (a)+(b): cluster1 is cut off for 180s (stands in for 3h, 60x). The active closes and moves runs; the standby catches up afterwards. Raw history (what the history resender reads) is read on the active during the lag.
 
 clusters:
