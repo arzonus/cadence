@@ -685,6 +685,11 @@ func (m *sqlExecutionStore) DeleteWorkflowExecution(
 	runID := serialization.MustParseUUID(request.RunID)
 	wfID := request.WorkflowID
 	return m.txExecute(ctx, dbShardID, "DeleteWorkflowExecution", func(tx sqlplugin.Tx) error {
+		if request.NextEventID != nil {
+			if err := lockAndCheckNextEventID(ctx, tx, shardID, domainID, wfID, runID, *request.NextEventID); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.DeleteFromExecutions(ctx, &sqlplugin.ExecutionsFilter{
 			ShardID:    shardID,
 			DomainID:   domainID,

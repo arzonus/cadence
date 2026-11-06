@@ -367,12 +367,7 @@ func (t *transferStandbyTaskExecutor) processCloseExecution(
 		return err
 	}
 	// also reached when the run isn't closed here yet; the decorator skips non-completed runs
-	return t.shard.GetExecutionManager().MoveToClosedExecutions(ctx, &persistence.DeleteWorkflowExecutionRequest{
-		DomainID:   transferTask.DomainID,
-		WorkflowID: transferTask.WorkflowID,
-		RunID:      transferTask.RunID,
-		ShardID:    common.Ptr(t.shard.GetShardID()),
-	})
+	return t.moveToClosedExecutions(ctx, transferTask)
 }
 
 func (t *transferStandbyTaskExecutor) processCancelExecution(

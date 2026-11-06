@@ -165,7 +165,22 @@ func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence
 	if err := s.closed.InsertClosedExecution(ctx, key, blob); err != nil {
 		return s.moveFailed(request, err)
 	}
-	if err := s.ExecutionStore.DeleteWorkflowExecution(ctx, request); err != nil {
+	// delete only the row that was copied: a writer that got in since the read (another host, after a shard move)
+	// has made the executions row the truth, and the slim row is stale
+	del := *request
+	del.NextEventID = &resp.State.ExecutionInfo.NextEventID
+	err = s.ExecutionStore.DeleteWorkflowExecution(ctx, &del)
+	var conditionFailed *persistence.ConditionFailedError
+	switch {
+	case isNotExists(err):
+		return nil // moved or deleted by someone else in the meantime
+	case errors.As(err, &conditionFailed):
+		s.metrics.IncCounter(metrics.PersistenceMoveToClosedExecutionsScope, metrics.WarmStorageMoveConflicts)
+		if err := s.closed.DeleteClosedExecution(ctx, key); err != nil {
+			return s.moveFailed(request, err)
+		}
+		return nil
+	case err != nil:
 		return s.moveFailed(request, err)
 	}
 	s.metrics.IncCounter(metrics.PersistenceMoveToClosedExecutionsScope, metrics.WarmStorageMoves)

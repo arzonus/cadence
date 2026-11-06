@@ -1027,6 +1027,9 @@ type (
 		WorkflowID string
 		RunID      string
 		DomainName string
+		// NextEventID, when set, makes the delete conditional: it fails with ConditionFailedError if the row's
+		// next event ID is another one, and with EntityNotExistsError if the row is gone.
+		NextEventID *int64
 	}
 
 	// DeleteCurrentWorkflowExecutionRequest is used to delete the current workflow execution

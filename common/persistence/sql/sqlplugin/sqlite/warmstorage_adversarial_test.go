@@ -193,3 +193,54 @@ func TestAdversarial_FlagOffAfterMoveKeepsReadsAndDeletes(t *testing.T) {
 	_, err = mgr.GetWorkflowExecution(ctx, e.getReq())
 	assert.IsType(t, &types.EntityNotExistsError{}, err)
 }
+
+// onInsertClosed runs a hook right before the slim row is written, i.e. after the move has read the executions row.
+type onInsertClosed struct {
+	persistence.ClosedExecutionStore
+	hook func()
+}
+
+func (c *onInsertClosed) InsertClosedExecution(ctx context.Context, key persistence.ClosedExecutionKey, data *persistence.DataBlob) error {
+	if key.WorkflowID != "cadence-warm-storage-sentinel" {
+		c.hook()
+	}
+	return c.ClosedExecutionStore.InsertClosedExecution(ctx, key, data)
+}
+
+// TestAdversarial_UpdateBetweenReadAndDeleteIsNotLost (VERIFICATION row 30, A7): a writer that lands between the
+// move's read of the executions row and its delete must keep its update. The delete is conditional on the row it
+// copied, so it fails, the stale slim row is dropped, and the updated executions row stays the truth.
+func TestAdversarial_UpdateBetweenReadAndDeleteIsNotLost(t *testing.T) {
+	e := newWarmEnv(t)
+	ctx := context.Background()
+	e.create(t)
+	e.closeRun(t)
+	st, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
+	require.NoError(t, err)
+	info := st.ExecutionInfo
+	condition := info.NextEventID
+
+	cfg := e.base.PersistenceConfig
+	parser, err := serialization.NewParser(&e.base.DynamicConfiguration)
+	require.NoError(t, err)
+	f := sql.NewFactory(*cfg.DataStores[cfg.DefaultStore].SQL, "", e.base.Logger, parser, &e.base.DynamicConfiguration)
+	exec, err := f.NewExecutionStore()
+	require.NoError(t, err)
+	closed, err := f.NewClosedExecutionStore()
+	require.NoError(t, err)
+	hooked := &onInsertClosed{ClosedExecutionStore: closed, hook: func() {
+		info.NextEventID = condition + 1
+		require.NoError(t, e.base.UpdateWorkflowExecution(ctx, info, st.ExecutionStats, st.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil))
+	}}
+	store := warmstorage.NewExecutionStore(exec, hooked, parser, &e.base.DynamicConfiguration, testlogger.New(t), metrics.NewNoopMetricsClient())
+	mgr := persistence.NewExecutionManagerImpl(store, testlogger.New(t), persistence.NewPayloadSerializer(), &e.base.DynamicConfiguration)
+
+	require.NoError(t, mgr.MoveToClosedExecutions(ctx, e.req()))
+
+	got, err := mgr.GetWorkflowExecution(ctx, e.getReq())
+	require.NoError(t, err)
+	assert.Equal(t, condition+1, got.State.ExecutionInfo.NextEventID, "the update is still there")
+	assert.False(t, got.State.ExecutionInfo.AutoResetPointsDropped, "and it is read from executions, not from a stale slim row")
+	_, err = closed.GetClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: e.domainID, WorkflowID: e.we.WorkflowID, RunID: e.we.RunID})
+	assert.IsType(t, &types.EntityNotExistsError{}, err, "the stale slim row is gone")
+}

@@ -22,6 +22,7 @@ package nosql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/uber/cadence/common/config"
@@ -529,7 +530,19 @@ func (d *nosqlExecutionStore) DeleteWorkflowExecution(
 	if err != nil {
 		return err
 	}
-	err = storeShard.db.DeleteWorkflowExecution(ctx, shardID, request.DomainID, request.WorkflowID, request.RunID)
+	if request.NextEventID != nil {
+		err = storeShard.db.DeleteWorkflowExecutionIfNextEventID(ctx, shardID, request.DomainID, request.WorkflowID, request.RunID, *request.NextEventID)
+		var conditionFailed *nosqlplugin.WorkflowOperationConditionFailure
+		var notExists *types.EntityNotExistsError
+		if errors.As(err, &conditionFailed) {
+			return &persistence.ConditionFailedError{Msg: conditionFailed.Error()}
+		}
+		if errors.As(err, &notExists) {
+			return notExists
+		}
+	} else {
+		err = storeShard.db.DeleteWorkflowExecution(ctx, shardID, request.DomainID, request.WorkflowID, request.RunID)
+	}
 	if err != nil {
 		return convertCommonErrors(storeShard.db, "DeleteWorkflowExecution", err)
 	}

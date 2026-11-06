@@ -2407,6 +2407,7 @@ const (
 	CadenceErrSemaphoreNameExceededWarnLimit
 	WarmStorageMoves
 	WarmStorageMoveFailures
+	WarmStorageMoveConflicts
 	WarmStorageFallbackHits
 	PersistenceRequests
 	PersistenceFailures
@@ -3398,6 +3399,7 @@ var MetricDefs = map[ServiceIdx]map[MetricIdx]metricDefinition{
 		CadenceErrSemaphoreNameExceededWarnLimit:                     {metricName: "cadence_errors_semaphore_name_exceeded_warn_limit", metricType: Counter},
 		WarmStorageMoves:                                             {metricName: "warm_storage_moves", metricType: Counter},
 		WarmStorageMoveFailures:                                      {metricName: "warm_storage_move_failures", metricType: Counter},
+		WarmStorageMoveConflicts:                                     {metricName: "warm_storage_move_conflicts", metricType: Counter},
 		WarmStorageFallbackHits:                                      {metricName: "warm_storage_fallback_hits", metricType: Counter},
 		PersistenceRequests:                                          {metricName: "persistence_requests", metricType: Counter},
 		PersistenceFailures:                                          {metricName: "persistence_errors", metricType: Counter},

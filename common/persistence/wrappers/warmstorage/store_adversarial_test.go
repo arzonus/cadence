@@ -56,8 +56,8 @@ func TestAdversarial_DeleteFailsThenRetrySucceeds(t *testing.T) {
 	e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil).Times(2)
 	e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil).Times(2)
 	gomock.InOrder(
-		e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(errDB),
-		e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil),
+		e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(errDB),
+		e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(nil),
 	)
 	require.NoError(t, s.MoveToClosedExecutions(ctx, e.deleteRequest()))
 	require.NoError(t, s.MoveToClosedExecutions(ctx, e.deleteRequest()))

@@ -68,6 +68,13 @@ func (e *testEnv) deleteRequest() *persistence.DeleteWorkflowExecutionRequest {
 	return &persistence.DeleteWorkflowExecutionRequest{ShardID: common.IntPtr(7), DomainID: e.key.DomainID, WorkflowID: e.key.WorkflowID, RunID: e.key.RunID}
 }
 
+// moveDeleteRequest is the delete the move issues: conditional on the row it copied.
+func (e *testEnv) moveDeleteRequest() *persistence.DeleteWorkflowExecutionRequest {
+	req := e.deleteRequest()
+	req.NextEventID = &e.full.ExecutionInfo.NextEventID
+	return req
+}
+
 func (e *testEnv) slimBlob(t *testing.T) *persistence.DataBlob {
 	blob, err := toBlob(testParser(t), e.full)
 	require.NoError(t, err)
@@ -322,11 +329,12 @@ func TestDeleteWorkflowExecution(t *testing.T) {
 
 func TestMoveToClosedExecutions(t *testing.T) {
 	tests := map[string]struct {
-		sentinel     error
-		setup        func(t *testing.T, e *testEnv)
-		wantMoves    int64
-		wantFailures int64
-		wantInUse    bool
+		sentinel      error
+		setup         func(t *testing.T, e *testEnv)
+		wantMoves     int64
+		wantFailures  int64
+		wantConflicts int64
+		wantInUse     bool
 	}{
 		"moves: sentinel, then slim row, then delete": {
 			sentinel: errNotExists,
@@ -335,7 +343,7 @@ func TestMoveToClosedExecutions(t *testing.T) {
 					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
 					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), sentinelKey, gomock.Any()).Return(nil),
 					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, e.slimBlob(t)).Return(nil),
-					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil),
+					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(nil),
 				)
 			},
 			wantMoves: 1, wantInUse: true,
@@ -346,7 +354,7 @@ func TestMoveToClosedExecutions(t *testing.T) {
 				gomock.InOrder(
 					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
 					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, e.slimBlob(t)).Return(nil),
-					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(nil),
+					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(nil),
 				)
 			},
 			wantMoves: 1, wantInUse: true,
@@ -424,12 +432,43 @@ func TestMoveToClosedExecutions(t *testing.T) {
 			},
 			wantFailures: 1, wantInUse: true,
 		},
+		"a writer got in since the read: executions row is the truth, stale slim row is dropped": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				gomock.InOrder(
+					e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil),
+					e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil),
+					e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(&persistence.ConditionFailedError{Msg: "next event ID changed"}),
+					e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(nil),
+				)
+			},
+			wantConflicts: 1, wantInUse: true,
+		},
+		"a writer got in and the stale slim row can't be dropped": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil)
+				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(&persistence.ConditionFailedError{})
+				e.closed.EXPECT().DeleteClosedExecution(gomock.Any(), e.key).Return(errDB)
+			},
+			wantConflicts: 1, wantFailures: 1, wantInUse: true,
+		},
+		"another mover finished first: the slim row it wrote is kept": {
+			sentinel: nil,
+			setup: func(t *testing.T, e *testEnv) {
+				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
+				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil)
+				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(errNotExists)
+			},
+			wantInUse: true,
+		},
 		"delete fails after slim write: both rows exist, reads prefer executions": {
 			sentinel: nil,
 			setup: func(t *testing.T, e *testEnv) {
 				e.inner.EXPECT().GetWorkflowExecution(gomock.Any(), e.getRequest()).Return(&persistence.InternalGetWorkflowExecutionResponse{State: e.full}, nil)
 				e.closed.EXPECT().InsertClosedExecution(gomock.Any(), e.key, gomock.Any()).Return(nil)
-				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.deleteRequest()).Return(errDB)
+				e.inner.EXPECT().DeleteWorkflowExecution(gomock.Any(), e.moveDeleteRequest()).Return(errDB)
 			},
 			wantFailures: 1, wantInUse: true,
 		},
@@ -442,6 +481,7 @@ func TestMoveToClosedExecutions(t *testing.T) {
 			assert.NoError(t, s.MoveToClosedExecutions(context.Background(), e.deleteRequest()))
 			assert.Equal(t, tc.wantMoves, e.counter("warm_storage_moves"))
 			assert.Equal(t, tc.wantFailures, e.counter("warm_storage_move_failures"))
+			assert.Equal(t, tc.wantConflicts, e.counter("warm_storage_move_conflicts"))
 			assert.Equal(t, tc.wantInUse, s.inUse.Load())
 		})
 	}

@@ -360,12 +360,7 @@ func (t *transferActiveTaskExecutor) processCloseExecution(
 		return err
 	}
 	// last step: visibility, parent reply and child policy above still need the full row
-	return t.shard.GetExecutionManager().MoveToClosedExecutions(ctx, &persistence.DeleteWorkflowExecutionRequest{
-		DomainID:   task.DomainID,
-		WorkflowID: task.WorkflowID,
-		RunID:      task.RunID,
-		ShardID:    common.Ptr(t.shard.GetShardID()),
-	})
+	return t.moveToClosedExecutions(ctx, task)
 }
 
 func (t *transferActiveTaskExecutor) processRecordWorkflowClosed(
