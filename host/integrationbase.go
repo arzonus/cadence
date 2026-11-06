@@ -357,6 +357,9 @@ func (s *IntegrationBase) HandleStats(suiteName string, stats *suite.SuiteInform
 		if strings.HasSuffix(testName, slowTestSuffix) {
 			allowedTime = slowTestLimit
 		}
+		if strings.HasPrefix(testName, "TestWarmStorage_") {
+			allowedTime = 5 * time.Minute // these toggle the flag and wait for dynamic config reloads
+		}
 
 		if testDuration > allowedTime {
 			s.Fail("Test took too long", "%s took %v (limit %v)", testName, testDuration, allowedTime)
