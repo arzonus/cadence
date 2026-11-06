@@ -84,6 +84,10 @@ func (s *store) GetWorkflowExecution(
 	request *persistence.InternalGetWorkflowExecutionRequest,
 ) (*persistence.InternalGetWorkflowExecutionResponse, error) {
 	resp, err := s.ExecutionStore.GetWorkflowExecution(ctx, request)
+	if err == nil {
+		s.markRestoredRun(ctx, request, resp)
+		return resp, err
+	}
 	if !isNotExists(err) || !s.fallbackOn(ctx, request.DomainID) {
 		return resp, err
 	}
@@ -101,6 +105,24 @@ func (s *store) GetWorkflowExecution(
 	}
 	s.metrics.IncCounter(metrics.PersistenceGetWorkflowExecutionScope, metrics.WarmStorageFallbackHits)
 	return &persistence.InternalGetWorkflowExecutionResponse{State: state}, nil
+}
+
+// markRestoredRun flags a closed run that has no reset points but still has its slim row: it was put back by a
+// rehydrate, which loses the points, so Describe has to rebuild them. The slim row is only read for closed runs
+// with empty points, which is rare.
+func (s *store) markRestoredRun(ctx context.Context, request *persistence.InternalGetWorkflowExecutionRequest, resp *persistence.InternalGetWorkflowExecutionResponse) {
+	info := resp.State.ExecutionInfo
+	if info.State != persistence.WorkflowStateCompleted {
+		return
+	}
+	// every manager write stores an empty list as a non-empty blob, so look at the decoded points
+	if points, err := s.serializer.DeserializeResetPoints(info.AutoResetPoints); err != nil || len(points.Points) > 0 || !s.fallbackOn(ctx, request.DomainID) {
+		return
+	}
+	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.Execution.WorkflowID, RunID: request.Execution.RunID}
+	if _, err := s.closed.GetClosedExecution(ctx, key); err == nil {
+		info.AutoResetPointsDropped = true
+	}
 }
 
 func (s *store) IsWorkflowExecutionExists(
@@ -206,6 +228,7 @@ func (s *store) restoreMovedRuns(
 				VersionHistories: state.VersionHistories,
 				StartVersion:     startVersion,
 				LastWriteVersion: lastWriteVersion,
+				RestoreClosedRun: true,
 			},
 			CurrentTimeStamp: now,
 		})

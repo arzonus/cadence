@@ -55,7 +55,9 @@ until retention has removed the Warm rows. Nothing needs migrating back.
 
 - Runs closed before the flag was turned on are not migrated.
 - A write to a Warm run puts its `executions` row back (the slim row stays until retention). Such a run stays in
-  `executions` until retention, and its auto-reset points are not rebuilt by Describe again.
+  `executions` until retention. Its auto-reset points are lost with the move, so Describe rebuilds them from history
+  (a closed run with no points and a slim row is treated as Warm). That costs one extra `closed_executions` read when
+  such a run is loaded, which only happens for closed runs without points.
 - Split close tasks do not move runs. `RecordWorkflowClosed` has no producer any more, and
   `RecordChildExecutionCompleted` is only created for an already-closed child whose own close task is what moves it.
 - The schema must be at the new version (`update-schema`) before the binary starts, even with the flag off.

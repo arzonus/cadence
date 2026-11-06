@@ -167,12 +167,13 @@ func TestAdversarial_WriteToMovedRun(t *testing.T) {
 			next := st.ExecutionInfo.NextEventID
 			require.NoError(t, e.base.ExecutionManager.MoveToClosedExecutions(ctx, e.req()))
 
+			st.ExecutionInfo.AutoResetPoints = &types.ResetPoints{} // what a state loaded from the slim row writes back
 			require.NoError(t, write(e, st))
 
 			got, err := e.base.GetWorkflowExecutionInfo(ctx, e.domainID, e.we)
 			require.NoError(t, err)
 			assert.Equal(t, next+1, got.ExecutionInfo.NextEventID, "the write is not lost")
-			assert.False(t, got.ExecutionInfo.AutoResetPointsDropped, "the run is read from executions again")
+			assert.True(t, got.ExecutionInfo.AutoResetPointsDropped, "the restored run has no reset points and its slim row, so Describe rebuilds them")
 		})
 	}
 }

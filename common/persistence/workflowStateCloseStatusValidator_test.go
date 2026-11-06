@@ -64,10 +64,10 @@ func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_Workf
 		WorkflowCloseStatusTimedOut,
 	}
 
-	s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCreated, WorkflowCloseStatusNone))
+	s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCreated, WorkflowCloseStatusNone, false))
 
 	for _, closeStatus := range closeStatuses {
-		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCreated, closeStatus))
+		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCreated, closeStatus, false))
 	}
 }
 
@@ -81,15 +81,16 @@ func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_Workf
 		WorkflowCloseStatusTimedOut,
 	}
 
-	s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateRunning, WorkflowCloseStatusNone))
+	s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateRunning, WorkflowCloseStatusNone, false))
 
 	for _, closeStatus := range closeStatuses {
-		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateRunning, closeStatus))
+		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateRunning, closeStatus, false))
 	}
 }
 
 func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_WorkflowStateCompleted() {
 	closeStatuses := []int{
+		WorkflowCloseStatusNone,
 		WorkflowCloseStatusCompleted,
 		WorkflowCloseStatusFailed,
 		WorkflowCloseStatusCanceled,
@@ -98,10 +99,8 @@ func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_Workf
 		WorkflowCloseStatusTimedOut,
 	}
 
-	s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCompleted, WorkflowCloseStatusNone))
-	// the create mode check is what keeps these out of every mode but zombie
 	for _, closeStatus := range closeStatuses {
-		s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCompleted, closeStatus))
+		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateCompleted, closeStatus, false))
 	}
 }
 
@@ -115,10 +114,10 @@ func (s *workflowStateCloseStatusSuite) TestCreateWorkflowStateCloseStatus_Workf
 		WorkflowCloseStatusTimedOut,
 	}
 
-	s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateZombie, WorkflowCloseStatusNone))
+	s.Nil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateZombie, WorkflowCloseStatusNone, false))
 
 	for _, closeStatus := range closeStatuses {
-		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateZombie, closeStatus))
+		s.NotNil(ValidateCreateWorkflowStateCloseStatus(WorkflowStateZombie, closeStatus, false))
 	}
 }
 

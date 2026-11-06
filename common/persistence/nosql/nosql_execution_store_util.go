@@ -43,7 +43,7 @@ func (d *nosqlExecutionStore) prepareCreateWorkflowExecutionRequestWithMaps(newW
 
 	executionRequest, err := d.prepareCreateWorkflowExecutionTxn(
 		executionInfo, versionHistories, checkSum,
-		currentTimeStamp, lastWriteVersion,
+		currentTimeStamp, lastWriteVersion, newWorkflow.RestoreClosedRun,
 	)
 	if err != nil {
 		return nil, err
@@ -501,11 +501,13 @@ func (d *nosqlExecutionStore) prepareCreateWorkflowExecutionTxn(
 	checksum checksum.Checksum,
 	nowTimestamp time.Time,
 	lastWriteVersion int64,
+	restoreClosedRun bool,
 ) (*nosqlplugin.WorkflowExecutionRequest, error) {
 	// validate workflow state & close status
 	if err := persistence.ValidateCreateWorkflowStateCloseStatus(
 		executionInfo.State,
-		executionInfo.CloseStatus); err != nil {
+		executionInfo.CloseStatus,
+		restoreClosedRun); err != nil {
 		return nil, err
 	}
 
