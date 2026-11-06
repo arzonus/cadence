@@ -5,22 +5,23 @@
 // row. Reads of a run that isn't in executions fall back to closed_executions, and deletes remove both rows.
 // History events never move.
 //
-// Opt-in: system.enableWarmStorage (per domain ID, default off) gates the move. Reads keep falling back after
-// the flag is turned off, as long as this cluster has ever moved a run: a sentinel row records that, so Warm
-// rows stay readable until retention deletes them. A cluster that never enabled the flag does nothing at
-// startup and doesn't need the closed_executions table at all. Its only extra cost is one sentinel read per
-// missed read or delete (at most one a minute while the table can't be read), which is also how a host whose
-// flag lags learns that another host has moved runs.
+// Opt-in: system.warmStorageMode (per domain ID, default off) is one of
+//   - off: this package never calls the closed store, and lazy.go means it never connects either. Going straight
+//     from on to off makes moved runs invisible, and retention then leaves their slim rows behind for good. Go
+//     through read_only and wait out one retention period first.
+//   - shadow: the close task also writes the slim row but keeps the executions row; reads of a closed run
+//     compare the two and count differences. Reads fall back and deletes remove both rows.
+//   - read_only: nothing new moves; reads, deletes and put-back still use closed_executions.
+//   - on: closed runs move.
 package warmstorage
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
+	"reflect"
 	"time"
 
-	"github.com/uber/cadence/common/constants"
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/log/tag"
@@ -30,30 +31,14 @@ import (
 	"github.com/uber/cadence/common/types"
 )
 
-// sentinelKey marks a cluster that has moved at least one run. It is never deleted by Cadence.
-var sentinelKey = persistence.ClosedExecutionKey{
-	DomainID:   "00000000-0000-0000-0000-000000000000",
-	WorkflowID: "cadence-warm-storage-sentinel",
-	RunID:      "00000000-0000-0000-0000-000000000000",
-}
-
-// sentinelRetryInterval is how long a host leaves the sentinel alone after a read of it failed, most likely
-// because the table doesn't exist.
-const sentinelRetryInterval = time.Minute
-
 type store struct {
 	persistence.ExecutionStore
 	closed     persistence.ClosedExecutionStore
 	parser     serialization.Parser
 	serializer persistence.PayloadSerializer
-	enabled    dynamicproperties.BoolPropertyFnWithDomainIDFilter
+	modeFn     dynamicproperties.StringPropertyFnWithDomainIDFilter
 	logger     log.Logger
 	metrics    metrics.Client
-
-	// inUse turns the read fallback on for every domain; it never goes back to false in a process
-	inUse           atomic.Bool
-	sentinelWritten atomic.Bool
-	probeFailedAt   atomic.Int64 // unix nanos of the last failed sentinel read, 0 if none
 }
 
 // NewExecutionStore wraps an execution store with warm storage.
@@ -73,7 +58,7 @@ func NewExecutionStore(
 		closed:         closed,
 		parser:         parser,
 		serializer:     persistence.NewPayloadSerializer(),
-		enabled:        dc.EnableWarmStorage,
+		modeFn:         dc.WarmStorageMode,
 		logger:         logger,
 		metrics:        metricsClient,
 	}
@@ -85,10 +70,13 @@ func (s *store) GetWorkflowExecution(
 ) (*persistence.InternalGetWorkflowExecutionResponse, error) {
 	resp, err := s.ExecutionStore.GetWorkflowExecution(ctx, request)
 	if err == nil {
+		if s.mode(request.DomainID) == persistence.WarmStorageShadow {
+			s.shadowCompare(ctx, request, resp.State)
+		}
 		s.markRestoredRun(ctx, request, resp)
 		return resp, err
 	}
-	if !isNotExists(err) || !s.fallbackOn(ctx, request.DomainID) {
+	if !isNotExists(err) || !s.fallbackOn(request.DomainID) {
 		return resp, err
 	}
 	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.Execution.WorkflowID, RunID: request.Execution.RunID}
@@ -107,6 +95,49 @@ func (s *store) GetWorkflowExecution(
 	return &persistence.InternalGetWorkflowExecutionResponse{State: state}, nil
 }
 
+// shadowCompare checks the slim row of a closed hot run against what that row would be now. It only reports; the
+// caller always gets the hot row. No slim row is normal: the run may have closed before shadow was turned on.
+func (s *store) shadowCompare(ctx context.Context, request *persistence.InternalGetWorkflowExecutionRequest, hot *persistence.InternalWorkflowMutableState) {
+	if hot.ExecutionInfo.State != persistence.WorkflowStateCompleted {
+		return
+	}
+	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.Execution.WorkflowID, RunID: request.Execution.RunID}
+	blob, err := s.closed.GetClosedExecution(ctx, key)
+	if isNotExists(err) {
+		return
+	}
+	var got, want *persistence.InternalWorkflowMutableState
+	if err == nil {
+		got, err = fromBlob(s.parser, s.serializer, key, blob)
+	}
+	if err == nil {
+		var hotBlob *persistence.DataBlob
+		if hotBlob, err = toBlob(s.parser, hot); err == nil {
+			want, err = fromBlob(s.parser, s.serializer, key, hotBlob)
+		}
+	}
+	if err != nil {
+		s.logger.Warn("warm storage shadow compare failed", tag.WorkflowDomainID(key.DomainID), tag.WorkflowID(key.WorkflowID), tag.WorkflowRunID(key.RunID), tag.Error(err))
+		return
+	}
+	var fields []string // names only: memo and search attributes can hold user data
+	gotInfo, wantInfo := reflect.ValueOf(got.ExecutionInfo).Elem(), reflect.ValueOf(want.ExecutionInfo).Elem()
+	for i := 0; i < gotInfo.NumField(); i++ {
+		if !reflect.DeepEqual(gotInfo.Field(i).Interface(), wantInfo.Field(i).Interface()) {
+			fields = append(fields, gotInfo.Type().Field(i).Name)
+		}
+	}
+	if !reflect.DeepEqual(got.VersionHistories, want.VersionHistories) {
+		fields = append(fields, "VersionHistories")
+	}
+	if len(fields) == 0 {
+		return
+	}
+	s.metrics.IncCounter(metrics.PersistenceGetWorkflowExecutionScope, metrics.WarmStorageShadowMismatches)
+	s.logger.Error("warm storage shadow mismatch",
+		tag.WorkflowDomainID(key.DomainID), tag.WorkflowID(key.WorkflowID), tag.WorkflowRunID(key.RunID), tag.Value(fields))
+}
+
 // markRestoredRun flags a closed run that has no reset points but still has its slim row: it was put back by a
 // rehydrate, which loses the points, so Describe has to rebuild them. The slim row is only read for closed runs
 // with empty points, which is rare.
@@ -116,7 +147,7 @@ func (s *store) markRestoredRun(ctx context.Context, request *persistence.Intern
 		return
 	}
 	// every manager write stores an empty list as a non-empty blob, so look at the decoded points
-	if points, err := s.serializer.DeserializeResetPoints(info.AutoResetPoints); err != nil || len(points.Points) > 0 || !s.fallbackOn(ctx, request.DomainID) {
+	if points, err := s.serializer.DeserializeResetPoints(info.AutoResetPoints); err != nil || len(points.Points) > 0 || !s.fallbackOn(request.DomainID) {
 		return
 	}
 	key := persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.Execution.WorkflowID, RunID: request.Execution.RunID}
@@ -130,7 +161,7 @@ func (s *store) IsWorkflowExecutionExists(
 	request *persistence.IsWorkflowExecutionExistsRequest,
 ) (*persistence.IsWorkflowExecutionExistsResponse, error) {
 	resp, err := s.ExecutionStore.IsWorkflowExecutionExists(ctx, request)
-	if err != nil || resp.Exists || !s.fallbackOn(ctx, request.DomainID) {
+	if err != nil || resp.Exists || !s.fallbackOn(request.DomainID) {
 		return resp, err
 	}
 	_, err = s.closed.GetClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID})
@@ -144,7 +175,7 @@ func (s *store) IsWorkflowExecutionExists(
 }
 
 func (s *store) DeleteWorkflowExecution(ctx context.Context, request *persistence.DeleteWorkflowExecutionRequest) error {
-	if err := s.ExecutionStore.DeleteWorkflowExecution(ctx, request); err != nil || !s.fallbackOn(ctx, request.DomainID) {
+	if err := s.ExecutionStore.DeleteWorkflowExecution(ctx, request); err != nil || !s.fallbackOn(request.DomainID) {
 		return err
 	}
 	return s.closed.DeleteClosedExecution(ctx, persistence.ClosedExecutionKey{DomainID: request.DomainID, WorkflowID: request.WorkflowID, RunID: request.RunID})
@@ -194,7 +225,7 @@ func (s *store) restoreMovedRuns(
 	infos ...*persistence.InternalWorkflowExecutionInfo,
 ) (restored bool, err error) {
 	for _, info := range infos {
-		if !s.fallbackOn(ctx, info.DomainID) {
+		if !s.fallbackOn(info.DomainID) {
 			continue
 		}
 		key := persistence.ClosedExecutionKey{DomainID: info.DomainID, WorkflowID: info.WorkflowID, RunID: info.RunID}
@@ -259,8 +290,12 @@ func firstError(errs ...error) error {
 }
 
 // MoveToClosedExecutions fails open: any problem leaves the run in executions, exactly as without warm storage,
-// so the close task never gets stuck on it. The caller checks the flag.
+// so the close task never gets stuck on it. The callers only ask in shadow and on; any other mode is a no-op here.
 func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence.DeleteWorkflowExecutionRequest) error {
+	mode := s.mode(request.DomainID)
+	if !mode.MovesRuns() {
+		return nil
+	}
 	resp, err := s.ExecutionStore.GetWorkflowExecution(ctx, &persistence.InternalGetWorkflowExecutionRequest{
 		ShardID:   request.ShardID,
 		DomainID:  request.DomainID,
@@ -293,12 +328,12 @@ func (s *store) MoveToClosedExecutions(ctx context.Context, request *persistence
 	if got, want := slim.ExecutionInfo.NextEventID, resp.State.ExecutionInfo.NextEventID; got != want {
 		return s.moveFailed(request, fmt.Errorf("next event ID from version histories is %d, row has %d", got, want))
 	}
-	if err := s.writeSentinel(ctx); err != nil {
-		return s.moveFailed(request, err)
-	}
 	// slim row first: if the delete never happens both rows exist, and reads still prefer executions
 	if err := s.closed.InsertClosedExecution(ctx, key, blob); err != nil {
 		return s.moveFailed(request, err)
+	}
+	if mode == persistence.WarmStorageShadow {
+		return nil // the executions row stays, so there's nothing to delete or to conflict with
 	}
 	// delete only the row that was copied: a writer that got in since the read (another host, after a shard move)
 	// has made the executions row the truth, and the slim row is stale
@@ -327,49 +362,13 @@ func (s *store) Close() {
 	s.ExecutionStore.Close()
 }
 
-func (s *store) fallbackOn(ctx context.Context, domainID string) bool {
-	if s.enabled(domainID) {
-		s.inUse.Store(true)
-		return true
-	}
-	if !s.inUse.Load() {
-		s.probeSentinel(ctx)
-	}
-	return s.inUse.Load()
+func (s *store) mode(domainID string) persistence.WarmStorageMode {
+	return persistence.ParseWarmStorageMode(s.modeFn(domainID))
 }
 
-// probeSentinel reads the sentinel on every call while it isn't known to exist, so a delete never skips the
-// closed row because another host has moved runs this one hasn't heard of. A failed read (most likely no table)
-// isn't repeated for sentinelRetryInterval.
-func (s *store) probeSentinel(ctx context.Context) {
-	if failed := s.probeFailedAt.Load(); failed != 0 && time.Since(time.Unix(0, failed)) < sentinelRetryInterval {
-		return
-	}
-	_, err := s.closed.GetClosedExecution(ctx, sentinelKey)
-	switch {
-	case err == nil:
-		s.probeFailedAt.Store(0)
-		s.inUse.Store(true)
-		s.sentinelWritten.Store(true)
-	case isNotExists(err):
-		s.probeFailedAt.Store(0)
-	default:
-		// most likely the table isn't there: fine until someone turns the flag on
-		s.probeFailedAt.Store(time.Now().UnixNano())
-		s.logger.Info("warm storage is unavailable, closed_executions can't be read", tag.Error(err))
-	}
-}
-
-func (s *store) writeSentinel(ctx context.Context) error {
-	if s.sentinelWritten.Load() {
-		return nil
-	}
-	if err := s.closed.InsertClosedExecution(ctx, sentinelKey, persistence.NewDataBlob([]byte{0}, constants.EncodingTypeEmpty)); err != nil {
-		return err
-	}
-	s.inUse.Store(true)
-	s.sentinelWritten.Store(true)
-	return nil
+// fallbackOn is false only in off, where closed_executions must not be touched at all.
+func (s *store) fallbackOn(domainID string) bool {
+	return s.mode(domainID) != persistence.WarmStorageOff
 }
 
 func (s *store) moveFailed(request *persistence.DeleteWorkflowExecutionRequest, err error) error {

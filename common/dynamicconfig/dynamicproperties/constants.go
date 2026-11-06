@@ -2505,13 +2505,6 @@ const (
 	// Default value: false
 	EnforceSchemaVerificationV2
 
-	// EnableWarmStorage moves closed runs from executions to the slim closed_executions table
-	// KeyName: system.enableWarmStorage
-	// Value type: Bool
-	// Default value: false
-	// Allowed filters: DomainID
-	EnableWarmStorage
-
 	// LastBoolKey must be the last one in this const group
 	LastBoolKey
 )
@@ -2850,6 +2843,13 @@ const (
 	// Default value: "enabled"
 	// Allowed filters: ShardID
 	TransferProcessorCachedQueueReaderMode
+
+	// WarmStorageMode sets how closed runs use the slim closed_executions table: off, shadow, read_only or on
+	// KeyName: system.warmStorageMode
+	// Value type: String
+	// Default value: "off"
+	// Allowed filters: DomainID
+	WarmStorageMode
 
 	// LastStringKey must be the last one in this const group
 	LastStringKey
@@ -5457,12 +5457,6 @@ var BoolKeys = map[BoolKey]DynamicBool{
 		Description:  "EnforceSchemaVerificationV2 enables more thorough schema verification, including advanced visibility",
 		DefaultValue: false,
 	},
-	EnableWarmStorage: {
-		KeyName:      "system.enableWarmStorage",
-		Filters:      []Filter{DomainID},
-		Description:  "EnableWarmStorage moves closed runs to the slim closed_executions table. Requires the closed_executions schema.",
-		DefaultValue: false,
-	},
 }
 
 var FloatKeys = map[FloatKey]DynamicFloat{
@@ -5736,6 +5730,12 @@ var StringKeys = map[StringKey]DynamicString{
 		Description:  "TransferProcessorCachedQueueReaderMode controls whether and how the cached queue reader is used: disabled/shadow/enabled",
 		DefaultValue: "enabled",
 		Filters:      []Filter{ShardID},
+	},
+	WarmStorageMode: {
+		KeyName:      "system.warmStorageMode",
+		Filters:      []Filter{DomainID},
+		Description:  "WarmStorageMode is off, shadow, read_only or on. Anything but off needs the closed_executions schema. See docs/warm-storage.md for the rollout order.",
+		DefaultValue: "off",
 	},
 }
 

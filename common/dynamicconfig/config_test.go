@@ -128,6 +128,14 @@ func (s *configSuite) TestGetStringPropertyFnWithDomainFilter() {
 	s.Equal("efg", value(domain))
 }
 
+func (s *configSuite) TestGetStringPropertyFnWithDomainIDFilter() {
+	key := dynamicproperties.WarmStorageMode
+	value := s.cln.GetStringPropertyFilteredByDomainID(key)
+	s.Equal("off", value("domain-id"))
+	s.client.SetValue(key, "on")
+	s.Equal("on", value("domain-id"))
+}
+
 func (s *configSuite) TestGetStringPropertyFnByTaskListInfo() {
 	key := dynamicproperties.TasklistLoadBalancerStrategy
 	domain := "testDomain"

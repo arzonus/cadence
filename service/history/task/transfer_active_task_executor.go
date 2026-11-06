@@ -356,7 +356,7 @@ func (t *transferActiveTaskExecutor) processCloseExecution(
 	ctx context.Context,
 	task *persistence.CloseExecutionTask,
 ) error {
-	if err := t.processCloseExecutionTaskHelper(ctx, task, true, true, true); err != nil || !t.config.EnableWarmStorage(task.DomainID) {
+	if err := t.processCloseExecutionTaskHelper(ctx, task, true, true, true); err != nil || !persistence.ParseWarmStorageMode(t.config.WarmStorageMode(task.DomainID)).MovesRuns() {
 		return err
 	}
 	// last step: visibility, parent reply and child policy above still need the full row

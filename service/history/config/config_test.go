@@ -261,7 +261,7 @@ func TestNewConfig(t *testing.T) {
 		"EnableDebugMode":                                        {dynamicproperties.EnableDebugMode, true},
 		"EnableTaskInfoLogByDomainID":                            {dynamicproperties.HistoryEnableTaskInfoLogByDomainID, true},
 		"EnableTimerDebugLogByDomainID":                          {dynamicproperties.EnableTimerDebugLogByDomainID, true},
-		"EnableWarmStorage":                                      {dynamicproperties.EnableWarmStorage, true},
+		"WarmStorageMode":                                        {dynamicproperties.WarmStorageMode, "on"},
 		"SampleLoggingRate":                                      {dynamicproperties.SampleLoggingRate, 93},
 		"EnableShardIDMetrics":                                   {dynamicproperties.EnableShardIDMetrics, true},
 		"LargeShardHistorySizeMetricThreshold":                   {dynamicproperties.LargeShardHistorySizeMetricThreshold, 94},
@@ -384,6 +384,8 @@ func getValue(f *reflect.Value) interface{} {
 		case dynamicproperties.IntPropertyFnWithShardIDFilter:
 			return fn(0)
 		case dynamicproperties.StringPropertyFnWithDomainFilter:
+			return fn("domain")
+		case dynamicproperties.StringPropertyFnWithDomainIDFilter:
 			return fn("domain")
 		case dynamicproperties.DurationPropertyFnWithShardIDFilter:
 			return fn(0)

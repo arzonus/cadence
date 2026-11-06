@@ -86,6 +86,9 @@ type MapPropertyFnWithDomainFilter func(domain string) map[string]interface{}
 // StringPropertyFnWithDomainFilter is a wrapper to get string property from dynamic config
 type StringPropertyFnWithDomainFilter func(domain string) string
 
+// StringPropertyFnWithDomainIDFilter is a wrapper to get string property from dynamic config with domainID as filter
+type StringPropertyFnWithDomainIDFilter func(domainID string) string
+
 // StringPropertyFnWithTaskListInfoFilters is a wrapper to get string property from dynamic config with domainID as filter
 type StringPropertyFnWithTaskListInfoFilters func(domain string, taskList string, taskType int) string
 

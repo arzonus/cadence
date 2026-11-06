@@ -2411,6 +2411,7 @@ const (
 	WarmStorageMovesSkipped
 	WarmStorageRehydrates
 	WarmStorageFallbackHits
+	WarmStorageShadowMismatches
 	PersistenceRequests
 	PersistenceFailures
 	PersistenceLatency
@@ -3405,6 +3406,7 @@ var MetricDefs = map[ServiceIdx]map[MetricIdx]metricDefinition{
 		WarmStorageMovesSkipped:                                      {metricName: "warm_storage_moves_skipped", metricType: Counter},
 		WarmStorageRehydrates:                                        {metricName: "warm_storage_rehydrates", metricType: Counter},
 		WarmStorageFallbackHits:                                      {metricName: "warm_storage_fallback_hits", metricType: Counter},
+		WarmStorageShadowMismatches:                                  {metricName: "warm_storage_shadow_mismatches", metricType: Counter},
 		PersistenceRequests:                                          {metricName: "persistence_requests", metricType: Counter},
 		PersistenceFailures:                                          {metricName: "persistence_errors", metricType: Counter},
 		PersistenceLatency:                                           {metricName: "persistence_latency", metricType: Timer},

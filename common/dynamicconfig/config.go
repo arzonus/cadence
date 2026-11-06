@@ -463,6 +463,22 @@ func (c *Collection) GetStringPropertyFilteredByDomain(key dynamicproperties.Str
 	}
 }
 
+// GetStringPropertyFilteredByDomainID gets property with domainID filter and asserts that it's a string
+func (c *Collection) GetStringPropertyFilteredByDomainID(key dynamicproperties.StringKey) dynamicproperties.StringPropertyFnWithDomainIDFilter {
+	return func(domainID string) string {
+		filters := c.toFilterMap(dynamicproperties.DomainIDFilter(domainID))
+		val, err := c.client.GetStringValue(
+			key,
+			filters,
+		)
+		if err != nil {
+			c.logError(key, filters, err)
+			return key.DefaultString()
+		}
+		return val
+	}
+}
+
 func (c *Collection) GetStringPropertyFilteredByTaskListInfo(key dynamicproperties.StringKey) dynamicproperties.StringPropertyFnWithTaskListInfoFilters {
 	return func(domain string, taskList string, taskType int) string {
 		filters := c.toFilterMap(

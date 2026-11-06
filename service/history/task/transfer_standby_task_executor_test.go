@@ -634,16 +634,21 @@ func (s *transferStandbyTaskExecutorSuite) TestProcessCloseExecution_WarmStorage
 	errViz := errors.New("visibility failed")
 	for _, tc := range []struct {
 		name    string
-		flagOn  bool
+		mode    string
 		vizErr  error
 		moveErr error
 		moves   int
 		wantErr error
 	}{
-		{name: "flag off", moves: 0},
-		{name: "flag on", flagOn: true, moves: 1},
-		{name: "flag on, visibility fails", flagOn: true, vizErr: errViz, moves: 0, wantErr: errViz},
-		{name: "flag on, move fails", flagOn: true, moveErr: errMove, moves: 1, wantErr: errMove},
+		{name: "default is off", moves: 0},
+		{name: "off", mode: "off", moves: 0},
+		{name: "unknown value is off", mode: "bogus", moves: 0},
+		{name: "read_only", mode: "read_only", moves: 0},
+		{name: "shadow", mode: "shadow", moves: 1},
+		{name: "on", mode: "on", moves: 1},
+		{name: "on, visibility fails", mode: "on", vizErr: errViz, moves: 0, wantErr: errViz},
+		{name: "on, move fails", mode: "on", moveErr: errMove, moves: 1, wantErr: errMove},
+		{name: "shadow, move fails", mode: "shadow", moveErr: errMove, moves: 1, wantErr: errMove},
 	} {
 		s.Run(tc.name, func() {
 			s.SetupTest()
@@ -665,7 +670,7 @@ func (s *transferStandbyTaskExecutorSuite) TestProcessCloseExecution_WarmStorage
 			s.mockExecutionMgr.On("GetWorkflowExecution", mock.Anything, mock.Anything).Return(&persistence.GetWorkflowExecutionResponse{State: persistenceMutableState}, nil)
 			s.mockVisibilityMgr.On("RecordWorkflowExecutionClosed", mock.Anything, mock.Anything).Return(tc.vizErr).Once()
 			s.mockArchivalMetadata.On("GetVisibilityConfig").Return(archiver.NewDisabledArchvialConfig())
-			s.mockShard.GetConfig().EnableWarmStorage = func(string) bool { return tc.flagOn }
+			s.mockShard.GetConfig().WarmStorageMode = func(string) string { return tc.mode }
 			if tc.moves > 0 {
 				s.mockExecutionMgr.On("MoveToClosedExecutions", mock.Anything, &persistence.DeleteWorkflowExecutionRequest{
 					DomainID:   s.domainID,

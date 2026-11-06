@@ -363,7 +363,7 @@ func (t *transferStandbyTaskExecutor) processCloseExecution(
 		actionFn,
 		standbyTaskPostActionNoOp,
 	) // no op post action, since the entire workflow is finished
-	if err != nil || !t.config.EnableWarmStorage(transferTask.DomainID) {
+	if err != nil || !persistence.ParseWarmStorageMode(t.config.WarmStorageMode(transferTask.DomainID)).MovesRuns() {
 		return err
 	}
 	// also reached when the run isn't closed here yet; the decorator skips non-completed runs
