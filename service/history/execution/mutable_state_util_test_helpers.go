@@ -138,6 +138,7 @@ func CopyWorkflowExecutionInfo(t *testing.T, sourceInfo *persistence.WorkflowExe
 		ClientFeatureVersion:               sourceInfo.ClientFeatureVersion,
 		ClientImpl:                         sourceInfo.ClientImpl,
 		AutoResetPoints:                    sourceInfo.AutoResetPoints,
+		AutoResetPointsDropped:             sourceInfo.AutoResetPointsDropped,
 		Memo:                               sourceInfo.Memo,
 		SearchAttributes:                   sourceInfo.SearchAttributes,
 		PartitionConfig:                    sourceInfo.PartitionConfig,

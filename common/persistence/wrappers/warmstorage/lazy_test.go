@@ -62,6 +62,10 @@ func TestUpdateWorkflowExecutionRestoresMovedRun(t *testing.T) {
 				e.inner.EXPECT().UpdateWorkflowExecution(gomock.Any(), req).Return(nil)
 			},
 		},
+		"shard ownership lost is never retried": {
+			firstErr: &persistence.ShardOwnershipLostError{}, wantErr: &persistence.ShardOwnershipLostError{},
+			setup: func(e *testEnv, req *persistence.InternalUpdateWorkflowExecutionRequest) {},
+		},
 		"no slim row: the original error": {
 			firstErr: notThere, wantErr: notThere,
 			setup: func(e *testEnv, req *persistence.InternalUpdateWorkflowExecutionRequest) {
