@@ -74,7 +74,8 @@ and `off` is safe. Nothing needs migrating back.
 
 Do not go straight from `on` to `off`. Moved runs become invisible (reads miss, and `IsWorkflowExecutionExists`
 reports them gone), and retention deletes only the `executions` row, which is already gone, so their slim rows stay
-in `closed_executions` for good.
+in `closed_executions` for good. The history scavenger also treats an invisible run as deleted (`DescribeMutableState`
+returns not-found) and deletes its history, so the run can't be brought back by switching the mode on again.
 
 Shadow leaves slim rows too, so back out of it the same way: `shadow` -> `read_only` -> wait -> `off`. The runs
 stay readable from `executions` either way; only the slim rows would be left behind.
