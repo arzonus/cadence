@@ -63,6 +63,11 @@ func CheckWarmStorage(t *testing.T, s *TestBase) {
 
 	// a late write to the moved run (replication backfill, refresh, a child start finding its closed child) puts
 	// the row back and lands, instead of failing on the missing row
+	// the test base's own manager runs with the mode off, which does not put rows back, so write through the
+	// manager that has the mode on
+	baseMgr := s.ExecutionManager
+	s.ExecutionManager = mgr
+	defer func() { s.ExecutionManager = baseMgr }()
 	condition := info.NextEventID
 	info.NextEventID++
 	require.NoError(t, s.UpdateWorkflowExecution(ctx, info, state.ExecutionStats, state.VersionHistories, nil, nil, condition, nil, nil, nil, nil, nil))
